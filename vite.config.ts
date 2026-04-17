@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -32,7 +35,7 @@ export default defineConfig({
     }),
   ],
   resolve: {
-    alias: { '@': path.resolve(__dirname, 'src') },
+    alias: { '@': path.resolve(projectRoot, 'src') },
   },
   test: {
     environment: 'node',
