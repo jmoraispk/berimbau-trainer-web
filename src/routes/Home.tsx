@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
-import { useLocation } from 'wouter';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'wouter';
 import { TOQUES, SOUND_COLORS, SOUND_LABELS, type ToqueName, type Sound } from '@/engine/rhythms';
+import { preloadActiveProfiles } from '@/audio/active-profiles';
+import type { SavedCalibration } from '@/engine/calibration';
 
 const SOUNDS: Sound[] = ['dong', 'ch', 'ding'];
 const TOQUE_NAMES = Object.keys(TOQUES) as ToqueName[];
@@ -10,6 +12,17 @@ export function Home() {
   const [toqueName, setToqueName] = useState<ToqueName>('Angola');
   const toque = TOQUES[toqueName];
   const [bpm, setBpm] = useState(toque.defaultBpm);
+  const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void preloadActiveProfiles().then((saved) => {
+      if (!cancelled) setCalibration(saved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // When the toque changes, snap BPM to its default (and into range).
   const onPickToque = (name: ToqueName) => {
@@ -107,6 +120,8 @@ export function Home() {
         </div>
       </section>
 
+      <CalibrationCard calibration={calibration} />
+
       <button
         type="button"
         onClick={start}
@@ -120,4 +135,42 @@ export function Home() {
       </footer>
     </main>
   );
+}
+
+function CalibrationCard({ calibration }: { calibration: SavedCalibration | null }) {
+  return (
+    <section className="w-full flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-bg-elev border border-border">
+      <div className="flex flex-col min-w-0">
+        <span className="text-sm font-medium">
+          {calibration ? 'Using your calibration' : 'Using default profile'}
+        </span>
+        <span className="text-xs text-text-dim truncate">
+          {calibration
+            ? `Saved ${formatRelative(calibration.savedAt)} · ${totalSamples(calibration)} samples`
+            : 'Calibrate for best accuracy on your berimbau.'}
+        </span>
+      </div>
+      <Link
+        href="/calibrate"
+        className="shrink-0 px-3 py-1.5 rounded-full border border-border text-sm hover:border-text-dim"
+      >
+        {calibration ? 'Recalibrate' : 'Calibrate'}
+      </Link>
+    </section>
+  );
+}
+
+function totalSamples(c: SavedCalibration): number {
+  return c.sampleCount.dong + c.sampleCount.ch + c.sampleCount.ding;
+}
+
+function formatRelative(ts: number): string {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return `${d} d ago`;
 }
