@@ -41,6 +41,7 @@ export interface DetectedNote {
   soundClass: DetectedSound;
   confidence: number;
   f0: number;
+  centroid: number;
   amplitude: number;
   isMistake?: boolean;
   mistakeType?: string;

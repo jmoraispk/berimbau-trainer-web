@@ -13,7 +13,7 @@ function makeNote(
   confidence = 0.95,
   f0 = 200,
 ): DetectedNote {
-  return { timestamp, soundClass: sound, confidence, f0, amplitude: 0.8 };
+  return { timestamp, soundClass: sound, confidence, f0, centroid: 800, amplitude: 0.8 };
 }
 
 describe('ScoringEngine — timing and outcomes', () => {
@@ -91,6 +91,7 @@ describe('ScoringEngine — timing and outcomes', () => {
       soundClass: 'unknown',
       confidence: 0,
       f0: 300,
+      centroid: 2000,
       amplitude: 0.5,
       isMistake: true,
       mistakeType: 'pitch_glide',

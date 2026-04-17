@@ -28,6 +28,7 @@ import { classify } from '@/engine/classifier';
 import type { Profiles } from '@/engine/profiles';
 import type { DetectedNote } from '@/engine/scoring';
 import { audioBus } from './AudioBus';
+import { getActiveProfiles } from './active-profiles';
 
 // The worklet lives in public/audio/ as plain JS so both dev and prod
 // serve it verbatim (Vite's worker transform injects HMR client code
@@ -58,7 +59,9 @@ export class AudioInput {
   private onVisibility = () => this.handleVisibility();
 
   constructor(options: AudioInputOptions = {}) {
-    this.profiles = options.profiles;
+    // Prefer an explicit profiles override; fall back to the saved
+    // calibration (if any) so the classifier is personalised by default.
+    this.profiles = options.profiles ?? getActiveProfiles()?.profiles;
   }
 
   get isRunning(): boolean {
@@ -131,6 +134,7 @@ export class AudioInput {
       soundClass: classification.sound,
       confidence: classification.confidence,
       f0: features.f0,
+      centroid: features.centroid,
       amplitude: Math.min(1, msg.rms * 10),
       isMistake: bleed,
       mistakeType: bleed ? 'note_bleed' : undefined,
