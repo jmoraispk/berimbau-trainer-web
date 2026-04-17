@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!--
+    Berimbau icon: stylized verga (bow) with arame (wire) and cabaça (gourd).
+    The arc sweeps from upper-left to lower-right; the wire is a taut
+    straight line across it; the cabaça sits at the lower anchor. A single
+    warm sound-wave arc echoes from the cabaça.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a2340"/>
+      <stop offset="1" stop-color="#0b0f1a"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c07a3a"/>
+      <stop offset="1" stop-color="#6b3d1a"/>
+    </linearGradient>
+    <radialGradient id="gourd" cx="0.38" cy="0.38" r="0.75">
+      <stop offset="0" stop-color="#ffb870"/>
+      <stop offset="0.6" stop-color="#e67832"/>
+      <stop offset="1" stop-color="#7a3815"/>
+    </radialGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- sound wave echo from the cabaça -->
+  <g stroke="#ff8a3d" stroke-linecap="round" fill="none" opacity="0.55">
+    <path d="M 150 395 a 60 60 0 0 1 0 -30" stroke-width="6"/>
+    <path d="M 130 405 a 85 85 0 0 1 0 -50" stroke-width="5" opacity="0.7"/>
+    <path d="M 110 415 a 110 110 0 0 1 0 -70" stroke-width="4" opacity="0.45"/>
+  </g>
+
+  <!-- verga (wooden bow) — a smooth arc from top-right to bottom-left -->
+  <path d="M 408 84 Q 120 256 208 400"
+        stroke="url(#wood)" stroke-width="22"
+        stroke-linecap="round" fill="none"/>
+
+  <!-- arame (steel wire) — taut straight line between the bow's anchors -->
+  <line x1="408" y1="84" x2="208" y2="400"
+        stroke="#d9dde8" stroke-width="3" stroke-linecap="round"/>
+  <line x1="408" y1="84" x2="208" y2="400"
+        stroke="#ffffff" stroke-width="1" opacity="0.65"/>
+
+  <!-- cabaça (gourd resonator) at the lower anchor -->
+  <circle cx="208" cy="400" r="62" fill="url(#gourd)"/>
+  <ellipse cx="188" cy="382" rx="18" ry="10" fill="#ffd9a8" opacity="0.55"/>
+
+  <!-- small wooden cap where the wire attaches to the gourd -->
+  <rect x="196" y="338" width="24" height="14" rx="3" fill="#3a2012"/>
+</svg>
