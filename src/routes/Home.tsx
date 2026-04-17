@@ -122,13 +122,21 @@ export function Home() {
 
       <CalibrationCard calibration={calibration} />
 
-      <button
-        type="button"
-        onClick={start}
-        className="mt-2 px-8 py-3 rounded-full bg-accent text-bg font-semibold tracking-wide shadow-lg hover:brightness-110 active:scale-95 transition"
-      >
-        Start practicing
-      </button>
+      <div className="flex flex-col items-center gap-3 w-full">
+        <button
+          type="button"
+          onClick={start}
+          className="px-8 py-3 rounded-full bg-accent text-bg font-semibold tracking-wide shadow-lg hover:brightness-110 active:scale-95 transition"
+        >
+          Start practicing
+        </button>
+        <Link
+          href="/songs"
+          className="text-sm text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          Browse 185 songs
+        </Link>
+      </div>
 
       <footer className="text-text-dim text-xs">
         {TOQUE_NAMES.length} toques · v2 · web
