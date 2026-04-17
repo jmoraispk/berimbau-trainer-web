@@ -1,0 +1,82 @@
+[
+  {
+    "title": "Paranauê",
+    "slug": "paranaue",
+    "style": "corrido",
+    "typicalToques": ["São Bento Grande (Regional)", "Angola"],
+    "source": "lalaue.com",
+    "sourceUrl": "https://www.lalaue.com/capoeira-music/paranaue/",
+    "hasLyrics": true,
+    "hasTranslation": true,
+    "audioType": "mixed",
+    "lyrics": [
+      { "pt": "Paranauê, paranauê, paraná", "en": "Paraná, paraná, paraná" },
+      { "pt": "Vou dizer minha mulher, paraná", "en": "I'll tell my wife, paraná" }
+    ],
+    "bpmRange": [100, 140]
+  },
+  {
+    "title": "A Manteiga Derramou",
+    "slug": "a-manteiga-derramou",
+    "style": "corrido",
+    "typicalToques": ["São Bento Grande (Regional)"],
+    "source": "lalaue.com",
+    "sourceUrl": "https://www.lalaue.com/capoeira-music/a-manteiga-derramou/",
+    "hasLyrics": true,
+    "hasTranslation": true,
+    "audioType": "mixed",
+    "lyrics": [
+      { "pt": "A manteiga derramou", "en": "The butter spilled" },
+      { "pt": "Mas eu não derramei não", "en": "But I didn't spill it" }
+    ],
+    "bpmRange": [110, 140]
+  },
+  {
+    "title": "Marinheiro Só",
+    "slug": "marinheiro-so",
+    "style": "corrido",
+    "typicalToques": ["São Bento Pequeno", "Angola"],
+    "source": "lalaue.com",
+    "sourceUrl": "https://www.lalaue.com/capoeira-music/marinheiro-so/",
+    "hasLyrics": true,
+    "hasTranslation": true,
+    "audioType": "mixed",
+    "lyrics": [
+      { "pt": "Eu não sou daqui, marinheiro só", "en": "I'm not from here, lone sailor" },
+      { "pt": "Eu não tenho amor, marinheiro só", "en": "I have no love, lone sailor" }
+    ],
+    "bpmRange": [70, 100]
+  },
+  {
+    "title": "Dona Maria do Camboatá",
+    "slug": "dona-maria-do-camboata",
+    "style": "corrido",
+    "typicalToques": ["São Bento Grande (Regional)"],
+    "source": "lalaue.com",
+    "sourceUrl": "https://www.lalaue.com/capoeira-music/dona-maria-do-camboata/",
+    "hasLyrics": true,
+    "hasTranslation": true,
+    "audioType": "mixed",
+    "lyrics": [
+      { "pt": "Dona Maria do Camboatá", "en": "Lady Maria of Camboatá" },
+      { "pt": "Ela chega na venda e manda botar", "en": "She arrives at the shop and orders" }
+    ],
+    "bpmRange": [110, 140]
+  },
+  {
+    "title": "Capoeira de Angola",
+    "slug": "capoeira-de-angola",
+    "style": "ladainha",
+    "typicalToques": ["Angola"],
+    "source": "lalaue.com",
+    "sourceUrl": "https://www.lalaue.com/capoeira-music/capoeira-de-angola/",
+    "hasLyrics": true,
+    "hasTranslation": false,
+    "audioType": "berimbau_only",
+    "lyrics": [
+      { "pt": "Capoeira de Angola, camará" },
+      { "pt": "Jogo de dentro, jogo de fora, camará" }
+    ],
+    "bpmRange": [50, 75]
+  }
+]
