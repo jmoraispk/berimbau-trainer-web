@@ -4,6 +4,7 @@ import { Home } from './routes/Home';
 import { Practice } from './routes/Practice';
 import { Calibrate } from './routes/Calibrate';
 import { Settings } from './routes/Settings';
+import { Stats } from './routes/Stats';
 
 // Songs routes are code-split — the 185-song catalog is ~150 KB, no reason
 // to ship it in the initial bundle when only a subset of users open it.
@@ -24,6 +25,7 @@ export function App() {
       <Route path="/practice" component={Practice} />
       <Route path="/calibrate" component={Calibrate} />
       <Route path="/settings" component={Settings} />
+      <Route path="/stats" component={Stats} />
       <Route path="/songs">
         <Suspense fallback={SongsFallback}>
           <Songs />

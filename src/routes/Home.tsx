@@ -275,6 +275,12 @@ function RecentSessionsCard({ sessions }: { sessions: SessionRecord[] }) {
           <SessionRow key={s.id ?? i} session={s} />
         ))}
       </ul>
+      <Link
+        href="/stats"
+        className="text-[11px] text-text-dim hover:text-text transition self-end"
+      >
+        View all stats →
+      </Link>
     </section>
   );
 }

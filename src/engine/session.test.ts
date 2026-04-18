@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { dayKey, streakDays, totalDaysPracticed, type SessionRecord } from './session';
+import {
+  computeToqueStats,
+  dayKey,
+  streakDays,
+  totalDaysPracticed,
+  type SessionRecord,
+} from './session';
 
 function rec(endedAt: number): SessionRecord {
   return {
@@ -78,5 +84,25 @@ describe('totalDaysPracticed', () => {
       rec(dayOffset(NOW, -3)),
     ];
     expect(totalDaysPracticed(sessions)).toBe(2);
+  });
+});
+
+describe('computeToqueStats', () => {
+  it('returns empty for no sessions', () => {
+    expect(computeToqueStats([])).toEqual([]);
+  });
+
+  it('aggregates per toque and sorts by most-recent first', () => {
+    const s1 = { ...rec(dayOffset(NOW, -5)), toqueName: 'Angola' as const, accuracy: 0.6 };
+    const s2 = { ...rec(dayOffset(NOW, -1)), toqueName: 'Angola' as const, accuracy: 0.9 };
+    const s3 = { ...rec(dayOffset(NOW, -3)), toqueName: 'Cavalaria' as const, accuracy: 0.7 };
+    const stats = computeToqueStats([s1, s2, s3]);
+
+    expect(stats.map((s) => s.toqueName)).toEqual(['Angola', 'Cavalaria']);
+    const angola = stats[0]!;
+    expect(angola.sessionCount).toBe(2);
+    expect(angola.bestAccuracy).toBeCloseTo(0.9, 5);
+    expect(angola.averageAccuracy).toBeCloseTo(0.75, 5);
+    expect(angola.totalBeats).toBe(20);
   });
 });

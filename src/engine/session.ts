@@ -86,3 +86,46 @@ export function totalDaysPracticed(sessions: SessionRecord[]): number {
   for (const s of sessions) days.add(dayKey(s.endedAt));
   return days.size;
 }
+
+export interface ToqueStats {
+  toqueName: ToqueName;
+  sessionCount: number;
+  totalMinutes: number;
+  totalBeats: number;
+  averageAccuracy: number;
+  bestAccuracy: number;
+  lastPracticed: number;
+}
+
+/**
+ * Per-toque aggregates over a set of sessions. Sorted by most-recently-
+ * practiced first so the stats page leads with what the user is currently
+ * working on.
+ */
+export function computeToqueStats(sessions: SessionRecord[]): ToqueStats[] {
+  const byToque = new Map<ToqueName, SessionRecord[]>();
+  for (const s of sessions) {
+    const list = byToque.get(s.toqueName);
+    if (list) list.push(s);
+    else byToque.set(s.toqueName, [s]);
+  }
+  const out: ToqueStats[] = [];
+  for (const [toqueName, list] of byToque) {
+    const totalSec = list.reduce((a, b) => a + b.elapsedSec, 0);
+    const totalBeats = list.reduce((a, b) => a + b.totalScoredBeats, 0);
+    const avg = list.reduce((a, b) => a + b.accuracy, 0) / list.length;
+    const best = list.reduce((a, b) => Math.max(a, b.accuracy), 0);
+    const last = list.reduce((a, b) => Math.max(a, b.endedAt), 0);
+    out.push({
+      toqueName,
+      sessionCount: list.length,
+      totalMinutes: Math.round(totalSec / 60),
+      totalBeats,
+      averageAccuracy: avg,
+      bestAccuracy: best,
+      lastPracticed: last,
+    });
+  }
+  out.sort((a, b) => b.lastPracticed - a.lastPracticed);
+  return out;
+}
