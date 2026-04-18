@@ -38,7 +38,6 @@ export function Home() {
     };
   }, []);
 
-  // When the toque changes, snap BPM to its default (and into range).
   const onPickToque = (name: ToqueName) => {
     setToqueName(name);
     setBpm(TOQUES[name].defaultBpm);
@@ -52,11 +51,11 @@ export function Home() {
   };
 
   return (
-    <main className="relative min-h-full flex flex-col items-center px-6 py-10 gap-8 max-w-2xl mx-auto">
+    <main className="relative min-h-full flex flex-col items-center px-6 pt-12 pb-14 gap-8 max-w-2xl mx-auto">
       <Link
         href="/settings"
         aria-label="Settings"
-        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev border border-border text-text-dim hover:text-text"
+        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 border border-border text-text-dim hover:text-text hover:border-border-strong transition"
       >
         <svg
           viewBox="0 0 20 20"
@@ -73,38 +72,50 @@ export function Home() {
         </svg>
       </Link>
 
-      <header className="flex flex-col items-center gap-2">
-        <img src="/icon.svg" alt="" className="w-16 h-16" />
-        <h1 className="text-3xl font-semibold tracking-tight">Berimbau Trainer</h1>
-        <p className="text-text-dim text-center text-sm max-w-md">
-          Pick a toque, set the tempo, and play along into your mic.
+      <header className="flex flex-col items-center gap-3">
+        <img src="/icon.svg" alt="" className="w-20 h-20 drop-shadow-[0_6px_30px_rgba(255,138,61,0.25)]" />
+        <h1
+          className="text-4xl font-semibold tracking-tight bg-clip-text text-transparent"
+          style={{
+            backgroundImage: 'linear-gradient(180deg, #fff 0%, #cfd5ea 100%)',
+          }}
+        >
+          Berimbau Trainer
+        </h1>
+        <p className="text-text-dim text-center text-sm max-w-sm">
+          Pick a toque, set the tempo, play along into your mic.
         </p>
       </header>
 
-      <section className="w-full flex gap-3">
+      <section className="w-full grid grid-cols-3 gap-2">
         {SOUNDS.map((s) => (
-          <div
-            key={s}
-            className="flex-1 flex flex-col items-center gap-1 px-3 py-3 rounded-xl bg-bg-elev border border-border"
-          >
-            <div className="w-8 h-8 rounded-full" style={{ background: SOUND_COLORS[s] }} />
-            <div className="text-xs font-medium tracking-wider">{SOUND_LABELS[s]}</div>
+          <div key={s} className="card flex flex-col items-center gap-1 px-3 py-3">
+            <div
+              className="w-8 h-8 rounded-full shadow-inner"
+              style={{
+                background: SOUND_COLORS[s],
+                boxShadow: `0 0 24px -4px ${SOUND_COLORS[s]}55`,
+              }}
+            />
+            <div className="text-[11px] font-semibold tracking-[0.15em]">
+              {SOUND_LABELS[s]}
+            </div>
           </div>
         ))}
       </section>
 
       <section className="w-full flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">Toque</h2>
+        <SectionLabel>Toque</SectionLabel>
         <div className="flex flex-wrap gap-2">
           {TOQUE_NAMES.map((name) => (
             <button
               key={name}
               type="button"
               onClick={() => onPickToque(name)}
-              className={`px-3 py-1.5 rounded-full text-sm border transition ${
+              className={`px-3.5 py-1.5 rounded-full text-sm border transition ${
                 name === toqueName
-                  ? 'bg-accent text-bg border-accent'
-                  : 'bg-bg-elev text-text border-border hover:border-text-dim'
+                  ? 'bg-accent text-bg border-accent shadow-[0_4px_16px_-6px_rgba(255,138,61,0.5)]'
+                  : 'bg-bg-elev text-text border-border hover:border-border-strong'
               }`}
             >
               {name}
@@ -116,8 +127,10 @@ export function Home() {
 
       <section className="w-full flex flex-col gap-2">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">Tempo</h2>
-          <span className="font-mono text-sm">{bpm} bpm</span>
+          <SectionLabel>Tempo</SectionLabel>
+          <span className="font-mono text-sm text-text">
+            <span className="text-base">{bpm}</span> <span className="text-text-dim text-xs">bpm</span>
+          </span>
         </div>
         <input
           type="range"
@@ -128,42 +141,51 @@ export function Home() {
           onChange={(e) => setBpm(Number(e.target.value))}
           className="w-full accent-accent"
         />
-        <div className="flex justify-between text-xs text-text-dim">
+        <div className="flex justify-between text-[10px] text-text-dim font-mono">
           <span>{GLOBAL_BPM_RANGE[0]}</span>
-          <span>default {toque.defaultBpm}</span>
+          <button
+            type="button"
+            onClick={() => setBpm(toque.defaultBpm)}
+            className="hover:text-text transition"
+          >
+            default {toque.defaultBpm}
+          </button>
           <span>{GLOBAL_BPM_RANGE[1]}</span>
         </div>
       </section>
 
       <section className="w-full flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">Pattern</h2>
-        <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1">
+        <SectionLabel>Pattern</SectionLabel>
+        <div className="card p-2 grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1">
           {preview.map((e) => (
             <div
               key={e.step}
-              className="aspect-square rounded flex items-center justify-center text-[10px] font-bold"
+              className="aspect-square rounded-[4px] flex items-center justify-center text-[10px] font-bold relative"
               style={{
-                background: SOUND_COLORS[e.sound],
+                background: e.sound === 'rest' ? '#2a3048' : SOUND_COLORS[e.sound],
                 color: e.sound === 'rest' ? '#4a5370' : '#0b0f1a',
-                opacity: e.sound === 'rest' ? 0.5 : e.accent === 2 ? 1 : 0.7,
+                opacity: e.sound === 'rest' ? 0.5 : e.accent === 2 ? 1 : 0.75,
               }}
+              title={`step ${e.step} · ${SOUND_LABELS[e.sound]}${e.accent === 2 ? ' (accent)' : ''}`}
             >
               {e.sound === 'rest' ? '' : SOUND_LABELS[e.sound][0]}
+              {e.step % 4 === 0 && e.sound === 'rest' && (
+                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-border-strong" />
+              )}
             </div>
           ))}
         </div>
+        <p className="text-[10px] text-text-dim">
+          16 steps over 2 bars · accented beats are fully saturated
+        </p>
       </section>
 
       <CalibrationCard calibration={calibration} />
 
       <RecentSessionsCard sessions={sessions} />
 
-      <div className="flex flex-col items-center gap-3 w-full">
-        <button
-          type="button"
-          onClick={start}
-          className="px-8 py-3 rounded-full bg-accent text-bg font-semibold tracking-wide shadow-lg hover:brightness-110 active:scale-95 transition"
-        >
+      <div className="flex flex-col items-center gap-3 w-full pt-2">
+        <button type="button" onClick={start} className="btn-primary px-10 py-3">
           Start practicing
         </button>
         <Link
@@ -174,16 +196,24 @@ export function Home() {
         </Link>
       </div>
 
-      <footer className="text-text-dim text-xs">
+      <footer className="text-text-dim text-[10px] font-mono tracking-wider mt-auto">
         {TOQUE_NAMES.length} toques · v2 · web
       </footer>
     </main>
   );
 }
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+      {children}
+    </h2>
+  );
+}
+
 function CalibrationCard({ calibration }: { calibration: SavedCalibration | null }) {
   return (
-    <section className="w-full flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-bg-elev border border-border">
+    <section className="card w-full flex items-center justify-between gap-4 px-4 py-3">
       <div className="flex flex-col min-w-0">
         <span className="text-sm font-medium">
           {calibration ? 'Using your calibration' : 'Using default profile'}
@@ -194,10 +224,7 @@ function CalibrationCard({ calibration }: { calibration: SavedCalibration | null
             : 'Calibrate for best accuracy on your berimbau.'}
         </span>
       </div>
-      <Link
-        href="/calibrate"
-        className="shrink-0 px-3 py-1.5 rounded-full border border-border text-sm hover:border-text-dim"
-      >
+      <Link href="/calibrate" className="btn-ghost shrink-0">
         {calibration ? 'Recalibrate' : 'Calibrate'}
       </Link>
     </section>
@@ -215,11 +242,9 @@ function RecentSessionsCard({ sessions }: { sessions: SessionRecord[] }) {
     sessions.reduce((s, r) => s + r.accuracy, 0) / sessions.length;
 
   return (
-    <section className="w-full flex flex-col gap-3 px-4 py-3 rounded-xl bg-bg-elev border border-border">
+    <section className="card w-full flex flex-col gap-3 px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">
-          Recent sessions
-        </h2>
+        <SectionLabel>Recent sessions</SectionLabel>
         <div className="flex items-center gap-3 text-xs text-text-dim">
           {streak > 0 && (
             <span>
@@ -262,9 +287,7 @@ function AccuracyPill({ accuracy }: { accuracy: number }) {
   const pct = Math.round(accuracy * 100);
   const color =
     pct >= 80 ? 'text-[#64f08c]' : pct >= 60 ? 'text-[#a7e87a]' : pct >= 40 ? 'text-[#f2b640]' : 'text-[#e2506c]';
-  return (
-    <span className={`font-mono w-11 text-right ${color}`}>{pct}%</span>
-  );
+  return <span className={`font-mono w-11 text-right ${color}`}>{pct}%</span>;
 }
 
 function formatRelative(ts: number): string {

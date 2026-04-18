@@ -109,11 +109,7 @@ export function SongDetail({ params }: { params: { slug: string } }) {
 
       {primaryToque && (
         <div className="flex flex-col items-center gap-2 py-4">
-          <button
-            type="button"
-            onClick={startPractice}
-            className="px-6 py-2 rounded-full bg-accent text-bg font-semibold"
-          >
+          <button type="button" onClick={startPractice} className="btn-primary">
             Practice with {primaryToque}
           </button>
           {song.typicalToques.length > 1 && (

@@ -175,11 +175,7 @@ export function Calibrate() {
       {phase.kind === 'error' && (
         <div className="flex flex-col items-center gap-3 px-6 py-4 rounded-xl bg-bg-elev border border-border">
           <p className="text-red-400 text-sm">{phase.message}</p>
-          <button
-            type="button"
-            onClick={handleStartMic}
-            className="px-5 py-1.5 rounded-full bg-accent text-bg font-semibold"
-          >
+          <button type="button" onClick={handleStartMic} className="btn-primary">
             Try again
           </button>
         </div>
@@ -246,11 +242,7 @@ function Idle({ onStart }: { onStart: () => void }) {
         You'll play 5 of each sound. No need to be fast — leave a small pause
         between hits.
       </p>
-      <button
-        type="button"
-        onClick={onStart}
-        className="px-6 py-2 rounded-full bg-accent text-bg font-semibold"
-      >
+      <button type="button" onClick={onStart} className="btn-primary">
         Open microphone
       </button>
     </div>
@@ -321,11 +313,7 @@ function Review({
         >
           Restart
         </button>
-        <button
-          type="button"
-          onClick={onSave}
-          className="px-6 py-2 rounded-full bg-accent text-bg font-semibold"
-        >
+        <button type="button" onClick={onSave} className="btn-primary">
           Save calibration
         </button>
       </div>
@@ -349,11 +337,7 @@ function Saved({ onHome, onRestart }: { onHome: () => void; onRestart: () => voi
         >
           Recalibrate
         </button>
-        <button
-          type="button"
-          onClick={onHome}
-          className="px-5 py-2 rounded-full bg-accent text-bg font-semibold"
-        >
+        <button type="button" onClick={onHome} className="btn-primary">
           Back to home
         </button>
       </div>
