@@ -173,7 +173,7 @@ export function Calibrate() {
         <Saved onHome={() => navigate('/')} onRestart={handleRestart} />
       )}
       {phase.kind === 'error' && (
-        <div className="flex flex-col items-center gap-3 px-6 py-4 rounded-xl bg-bg-elev border border-border">
+        <div className="card flex flex-col items-center gap-3 px-6 py-4">
           <p className="text-red-400 text-sm">{phase.message}</p>
           <button type="button" onClick={handleStartMic} className="btn-primary">
             Try again
@@ -208,12 +208,8 @@ function StageStrip({
         return (
           <div
             key={sound}
-            className={`flex-1 flex flex-col items-center gap-1 px-3 py-3 rounded-xl border transition ${
-              isActive
-                ? 'bg-bg-elev border-accent'
-                : done
-                ? 'bg-bg-elev border-border opacity-70'
-                : 'bg-bg-elev border-border'
+            className={`card flex-1 flex flex-col items-center gap-1 px-3 py-3 transition ${
+              isActive ? 'border-accent shadow-[0_6px_24px_-12px_rgba(255,138,61,0.5)]' : done ? 'opacity-70' : ''
             }`}
           >
             <div
@@ -237,7 +233,7 @@ function StageStrip({
 
 function Idle({ onStart }: { onStart: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-4 px-6 py-5 rounded-2xl bg-bg-elev border border-border max-w-md text-center">
+    <div className="flex flex-col items-center gap-4 card px-6 py-5 max-w-md text-center">
       <p className="text-text-dim text-sm">
         You'll play 5 of each sound. No need to be fast — leave a small pause
         between hits.
@@ -265,10 +261,13 @@ function Recording({
   const sound = STAGES[stage]!;
   const count = byClass[sound];
   return (
-    <div className="flex flex-col items-center gap-4 px-6 py-5 rounded-2xl bg-bg-elev border border-border max-w-md w-full">
+    <div className="flex flex-col items-center gap-4 card px-6 py-5 max-w-md w-full">
       <div
         className="w-24 h-24 rounded-full flex items-center justify-center text-2xl font-bold text-bg"
-        style={{ background: SOUND_COLORS[sound] }}
+        style={{
+          background: SOUND_COLORS[sound],
+          boxShadow: `0 0 48px -4px ${SOUND_COLORS[sound]}60`,
+        }}
       >
         {SOUND_LABELS[sound]}
       </div>
@@ -282,7 +281,7 @@ function Recording({
         type="button"
         onClick={onSkip}
         disabled={count < MIN_SAMPLES_PER_CLASS}
-        className="px-4 py-1.5 rounded-full bg-border text-text text-sm disabled:opacity-40"
+        className="btn-ghost disabled:opacity-40"
       >
         Skip to next
       </button>
@@ -306,11 +305,7 @@ function Review({
       </p>
       <Scatter samples={samples} />
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onRestart}
-          className="px-5 py-2 rounded-full bg-bg-elev border border-border text-text text-sm"
-        >
+        <button type="button" onClick={onRestart} className="btn-secondary">
           Restart
         </button>
         <button type="button" onClick={onSave} className="btn-primary">
@@ -323,18 +318,14 @@ function Review({
 
 function Saved({ onHome, onRestart }: { onHome: () => void; onRestart: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-4 px-6 py-5 rounded-2xl bg-bg-elev border border-border max-w-md text-center">
+    <div className="flex flex-col items-center gap-4 card px-6 py-5 max-w-md text-center">
       <p className="text-text">Calibration saved.</p>
       <p className="text-text-dim text-sm">
         Your profile is now loaded and will be used automatically the next time
         you practice.
       </p>
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onRestart}
-          className="px-4 py-1.5 rounded-full bg-bg border border-border text-sm"
-        >
+        <button type="button" onClick={onRestart} className="btn-secondary">
           Recalibrate
         </button>
         <button type="button" onClick={onHome} className="btn-primary">

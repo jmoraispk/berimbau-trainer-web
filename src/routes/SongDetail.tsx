@@ -125,7 +125,7 @@ export function SongDetail({ params }: { params: { slug: string } }) {
 
 function ToquePill({ name }: { name: ToqueName }) {
   return (
-    <span className="px-3 py-1 rounded-full bg-bg-elev border border-border text-xs">
+    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs text-text bg-bg-elev border border-border">
       {name}
     </span>
   );
@@ -133,7 +133,7 @@ function ToquePill({ name }: { name: ToqueName }) {
 
 function YoutubeEmbed({ id, title }: { id: string; title: string }) {
   return (
-    <div className="relative w-full overflow-hidden rounded-xl border border-border bg-black aspect-video">
+    <div className="card relative w-full overflow-hidden bg-black aspect-video p-0">
       <iframe
         className="absolute inset-0 w-full h-full"
         src={`https://www.youtube-nocookie.com/embed/${id}?modestbranding=1&rel=0`}
@@ -149,14 +149,14 @@ function YoutubeEmbed({ id, title }: { id: string; title: string }) {
 function Lyrics({ song, hasTranslation }: { song: Song; hasTranslation: boolean }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">
-        Lyrics {hasTranslation && <span className="normal-case text-[10px] font-normal">(pt · en)</span>}
+      <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+        Lyrics {hasTranslation && <span className="normal-case text-[10px] font-normal">· pt / en</span>}
       </h2>
-      <ol className="flex flex-col gap-2">
+      <ol className="flex flex-col gap-1.5">
         {song.lyrics.map((line, i) => (
           <li
             key={i}
-            className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0 px-3 py-2 rounded-lg bg-bg-elev border border-border"
+            className="card grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0 px-3 py-2"
           >
             <span className="text-text">{line.pt}</span>
             {line.en && <span className="text-text-dim text-sm md:text-base">{line.en}</span>}
