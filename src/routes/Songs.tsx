@@ -115,45 +115,34 @@ export function Songs() {
 }
 
 function SongRow({ song }: { song: Song }) {
-  const hasYoutube = Boolean(song.youtubeId);
   return (
-    <li className="flex items-center gap-3 px-4 py-3 rounded-xl bg-bg-elev border border-border hover:border-text-dim transition">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2">
-          <span className="font-medium truncate">{song.title}</span>
-          <span className="text-[10px] font-mono uppercase text-text-dim tracking-wider shrink-0">
-            {song.style.replace('_', ' ')}
-          </span>
-        </div>
-        <div className="text-xs text-text-dim truncate flex gap-2">
-          {song.author && <span>{song.author}</span>}
-          {song.typicalToques.length > 0 && (
-            <span className="truncate">
-              · {song.typicalToques.map(shortToque).join(', ')}
+    <li>
+      <Link
+        href={`/songs/${song.slug}`}
+        className="flex items-center gap-3 px-4 py-3 rounded-xl bg-bg-elev border border-border hover:border-text-dim transition"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="font-medium truncate">{song.title}</span>
+            <span className="text-[10px] font-mono uppercase text-text-dim tracking-wider shrink-0">
+              {song.style.replace('_', ' ')}
             </span>
-          )}
-          {song.hasLyrics && <span>· {song.lyrics.length} lines</span>}
+          </div>
+          <div className="text-xs text-text-dim truncate flex gap-2">
+            {song.author && <span>{song.author}</span>}
+            {song.typicalToques.length > 0 && (
+              <span className="truncate">
+                · {song.typicalToques.map(shortToque).join(', ')}
+              </span>
+            )}
+            {song.hasLyrics && <span>· {song.lyrics.length} lines</span>}
+          </div>
         </div>
-      </div>
-      {hasYoutube ? (
-        <a
-          href={`https://www.youtube.com/watch?v=${song.youtubeId!}`}
-          target="_blank"
-          rel="noreferrer"
-          className="shrink-0 px-3 py-1 rounded-full border border-border text-xs text-text-dim hover:border-accent hover:text-accent"
-        >
-          YouTube ↗
-        </a>
-      ) : song.sourceUrl ? (
-        <a
-          href={song.sourceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="shrink-0 px-3 py-1 rounded-full border border-border text-xs text-text-dim hover:border-text"
-        >
-          lyrics ↗
-        </a>
-      ) : null}
+        <div className="shrink-0 flex items-center gap-2 text-xs text-text-dim">
+          {song.youtubeId && <span>▶</span>}
+          <span aria-hidden>→</span>
+        </div>
+      </Link>
     </li>
   );
 }

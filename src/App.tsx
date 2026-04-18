@@ -4,9 +4,17 @@ import { Home } from './routes/Home';
 import { Practice } from './routes/Practice';
 import { Calibrate } from './routes/Calibrate';
 
-// Songs is code-split — the 185-song catalog is ~150 KB, no reason to
-// ship it in the initial bundle when only a subset of users will open it.
+// Songs routes are code-split — the 185-song catalog is ~150 KB, no reason
+// to ship it in the initial bundle when only a subset of users open it.
+// Both /songs and /songs/:slug share the same chunk (both import songs.json).
 const Songs = lazy(() => import('./routes/Songs').then((m) => ({ default: m.Songs })));
+const SongDetail = lazy(() =>
+  import('./routes/SongDetail').then((m) => ({ default: m.SongDetail })),
+);
+
+const SongsFallback = (
+  <div className="p-8 text-text-dim">Loading songs…</div>
+);
 
 export function App() {
   return (
@@ -15,9 +23,16 @@ export function App() {
       <Route path="/practice" component={Practice} />
       <Route path="/calibrate" component={Calibrate} />
       <Route path="/songs">
-        <Suspense fallback={<div className="p-8 text-text-dim">Loading songs…</div>}>
+        <Suspense fallback={SongsFallback}>
           <Songs />
         </Suspense>
+      </Route>
+      <Route path="/songs/:slug">
+        {(params) => (
+          <Suspense fallback={SongsFallback}>
+            <SongDetail params={params} />
+          </Suspense>
+        )}
       </Route>
       <Route>
         <div className="p-8 text-text-dim">Not found.</div>
