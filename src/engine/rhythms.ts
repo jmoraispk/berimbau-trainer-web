@@ -22,8 +22,15 @@ export interface BeatEvent {
   accent: Accent;
 }
 
+export type ToqueName =
+  | 'São Bento Grande (Regional)'
+  | 'São Bento Pequeno'
+  | 'Angola'
+  | 'Iuna'
+  | 'Cavalaria';
+
 export interface ToquePattern {
-  name: string;
+  name: ToqueName;
   description: string;
   bpmRange: [number, number];
   defaultBpm: number;
@@ -31,13 +38,6 @@ export interface ToquePattern {
   cycleBeats: number;
   pattern: BeatEvent[];
 }
-
-export type ToqueName =
-  | 'São Bento Grande (Regional)'
-  | 'São Bento Pequeno'
-  | 'Angola'
-  | 'Iuna'
-  | 'Cavalaria';
 
 const rest = (step: number): BeatEvent => ({ step, sound: 'rest', accent: 0 });
 
