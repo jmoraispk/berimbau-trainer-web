@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearch } from 'wouter';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useSearch } from 'wouter';
 import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
 import {
@@ -34,13 +34,15 @@ import {
  *
  * The canvas loop drives everything: it pulls pending target beats from the
  * scheduler, registers them with the ScoringEngine just before the hit line,
- * consumes new detected notes from audioBus, and renders outcomes. React only
- * owns the pre-start overlay — it never re-renders per audio frame.
+ * consumes new detected notes from audioBus, and renders outcomes. React
+ * owns the pre-start overlay and the pause / summary overlay; the audio
+ * frame never touches React state.
  */
 
 const LEAD_SECONDS = 3;
 const REGISTER_LEAD_SEC = 0.3;
 const COUNT_IN_SECONDS = 2;
+const RESUME_LEAD_SEC = 1.0;
 const OUTCOME_FADE_SEC = 1.5;
 
 const OUTCOME_COLORS: Record<Outcome, string> = {
@@ -52,8 +54,11 @@ const OUTCOME_COLORS: Record<Outcome, string> = {
   mistake: '#8a93b0',
 };
 
+type Status = 'idle' | 'starting' | 'running' | 'paused' | 'error';
+
 export function Practice() {
   const search = useSearch();
+  const [, navigate] = useLocation();
   const { toque, bpm } = useMemo(() => parseParams(search), [search]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -63,10 +68,89 @@ export function Practice() {
   const registeredBeatsRef = useRef<Set<number>>(new Set());
   const outcomesRef = useRef<Map<number, BeatResult & { at: number }>>(new Map());
   const lastDetectedTsRef = useRef(-Infinity);
-  const [status, setStatus] = useState<'idle' | 'starting' | 'running' | 'error'>('idle');
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const pausedRef = useRef(false);
 
-  // Render loop — runs whether or not the mic is live.
+  // Session timing. We track active (unpaused) seconds so the summary
+  // reports real play time, not wall-clock-since-start.
+  const sessionStartRef = useRef(0);
+  const pausedDurationRef = useRef(0);
+  const pauseStartedAtRef = useRef<number | null>(null);
+
+  const [status, setStatus] = useState<Status>('idle');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Snapshot of stats shown in the paused summary overlay — re-read each
+  // time we pause so React doesn't need to mirror the scoring engine live.
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
+
+  const pauseNow = useCallback(() => {
+    if (pausedRef.current) return;
+    const input = inputRef.current;
+    const now = input ? input.now() : performance.now() / 1000;
+    pausedRef.current = true;
+    pauseStartedAtRef.current = now;
+    setStatus('paused');
+    setSummary(buildSummary(scoringRef.current, elapsedActive(now)));
+  }, []);
+
+  const resumeNow = useCallback(() => {
+    const input = inputRef.current;
+    if (!input || !pausedRef.current) return;
+    const now = input.now();
+    if (pauseStartedAtRef.current != null) {
+      pausedDurationRef.current += now - pauseStartedAtRef.current;
+      pauseStartedAtRef.current = null;
+    }
+    // Fresh scheduler so the pattern picks up after a short lead-in rather
+    // than rushing through every beat missed while paused.
+    schedulerRef.current = new ToqueScheduler({
+      toque,
+      bpm,
+      startTime: now + RESUME_LEAD_SEC,
+    });
+    registeredBeatsRef.current = new Set();
+    lastDetectedTsRef.current = now;
+    pausedRef.current = false;
+    setSummary(null);
+    setStatus('running');
+  }, [toque, bpm]);
+
+  const restartNow = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const now = input.now();
+    scoringRef.current.reset();
+    registeredBeatsRef.current = new Set();
+    outcomesRef.current = new Map();
+    lastDetectedTsRef.current = now;
+    sessionStartRef.current = now;
+    pausedDurationRef.current = 0;
+    pauseStartedAtRef.current = null;
+    schedulerRef.current = new ToqueScheduler({
+      toque,
+      bpm,
+      startTime: now + COUNT_IN_SECONDS,
+    });
+    pausedRef.current = false;
+    setSummary(null);
+    setStatus('running');
+  }, [toque, bpm]);
+
+  const endSession = useCallback(() => {
+    void inputRef.current?.stop();
+    inputRef.current = null;
+    navigate('/');
+  }, [navigate]);
+
+  const elapsedActive = (now: number): number => {
+    if (!sessionStartRef.current) return 0;
+    const total = now - sessionStartRef.current;
+    const paused =
+      pausedDurationRef.current +
+      (pauseStartedAtRef.current != null ? now - pauseStartedAtRef.current : 0);
+    return Math.max(0, total - paused);
+  };
+
+  // Canvas render loop — runs whether or not the mic is live.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -106,13 +190,11 @@ export function Practice() {
       const hitX = Math.round(w * 0.25);
       const pxPerSec = (w - hitX) / LEAD_SECONDS;
 
-      // Backdrop
       ctx.fillStyle = '#0b0f1a';
       ctx.fillRect(0, 0, w, h);
 
-      // Hit line + tolerance band
       const scoring = scoringRef.current;
-      const toleranceW = 0.08 * pxPerSec; // TIMING_TOLERANCE_SEC
+      const toleranceW = 0.08 * pxPerSec;
       ctx.fillStyle = 'rgba(255,138,61,0.08)';
       ctx.fillRect(hitX - toleranceW, 0, toleranceW * 2, h);
       ctx.strokeStyle = '#ff8a3d';
@@ -122,11 +204,10 @@ export function Practice() {
       ctx.lineTo(hitX, h);
       ctx.stroke();
 
-      // Lane guides (DONG/TCH/DING vertical positions)
       const laneY = (sound: Sound) => {
         if (sound === 'dong') return h * 0.72;
         if (sound === 'ding') return h * 0.28;
-        return h * 0.5; // ch
+        return h * 0.5;
       };
       ctx.strokeStyle = '#141a2a';
       ctx.lineWidth = 1;
@@ -138,67 +219,69 @@ export function Practice() {
         ctx.stroke();
       }
 
-      // Timing source — prefer the audio clock for scoring sync.
       const input = inputRef.current;
       const now = input ? input.now() : performance.now() / 1000;
+      // When paused we freeze the virtual clock used by the renderer so
+      // beats don't drift off-screen while the user is reading the summary.
+      const renderNow = pausedRef.current && pauseStartedAtRef.current != null
+        ? pauseStartedAtRef.current
+        : now;
 
-      // Pull upcoming beats from the scheduler and draw them.
       const scheduler = schedulerRef.current;
       if (scheduler) {
-        const beats = scheduler.beatsInWindow(now - 0.3, now + LEAD_SECONDS);
+        const beats = scheduler.beatsInWindow(renderNow - 0.3, renderNow + LEAD_SECONDS);
 
         for (const beat of beats) {
-          // Register with the scoring engine just before the hit line.
           if (
+            !pausedRef.current &&
             !registeredBeatsRef.current.has(beat.id) &&
-            beat.beatTime - now < REGISTER_LEAD_SEC
+            beat.beatTime - renderNow < REGISTER_LEAD_SEC
           ) {
-            scoring.registerTargetBeat(beat.step, beat.sound, beat.beatTime, now);
+            scoring.registerTargetBeat(beat.step, beat.sound, beat.beatTime, renderNow);
             registeredBeatsRef.current.add(beat.id);
           }
-          const x = hitX + (beat.beatTime - now) * pxPerSec;
+          const x = hitX + (beat.beatTime - renderNow) * pxPerSec;
           if (x < -40 || x > w + 40) continue;
           const outcome = outcomesRef.current.get(beat.id);
           drawTarget(ctx, beat, x, laneY(beat.sound), outcome);
         }
 
-        // Expire beats past the late zone as misses.
-        for (const miss of scoring.flushMissedBeats(now)) {
-          if (miss.step != null) {
-            const beatId = findBeatId(scheduler, miss, now);
-            if (beatId != null) outcomesRef.current.set(beatId, { ...miss, at: now });
+        if (!pausedRef.current) {
+          for (const miss of scoring.flushMissedBeats(renderNow)) {
+            if (miss.step != null) {
+              const beatId = findBeatId(scheduler, miss, renderNow);
+              if (beatId != null) outcomesRef.current.set(beatId, { ...miss, at: renderNow });
+            }
           }
         }
       }
 
-      // Consume new detected notes from audioBus and feed them to the scoring
-      // engine. Detected notes are pushed in chronological order — we only
-      // process anything newer than the last one we've seen.
+      if (!pausedRef.current) {
+        const notes = audioBus.recentNotes;
+        for (let i = 0; i < notes.length; i++) {
+          const note = notes[i]!;
+          if (note.timestamp <= lastDetectedTsRef.current) continue;
+          lastDetectedTsRef.current = note.timestamp;
+          const result = scoring.registerDetectedNote(note, renderNow);
+          if (result && result.step != null) {
+            const scheduler2 = schedulerRef.current;
+            if (scheduler2) {
+              const id = findBeatId(scheduler2, result, renderNow);
+              if (id != null) outcomesRef.current.set(id, { ...result, at: renderNow });
+            }
+          }
+        }
+      }
+
       const notes = audioBus.recentNotes;
-      for (let i = 0; i < notes.length; i++) {
-        const note = notes[i]!;
-        if (note.timestamp <= lastDetectedTsRef.current) continue;
-        lastDetectedTsRef.current = note.timestamp;
-        const result = scoring.registerDetectedNote(note, now);
-        if (result && result.step != null) {
-          const scheduler2 = schedulerRef.current;
-          if (scheduler2) {
-            const id = findBeatId(scheduler2, result, now);
-            if (id != null) outcomesRef.current.set(id, { ...result, at: now });
-          }
-        }
-      }
-
-      // Render detected notes. Their age maps to x just like target beats.
       for (let i = notes.length - 1; i >= 0; i--) {
         const note = notes[i]!;
-        const x = hitX + (note.timestamp - now) * pxPerSec;
+        const x = hitX + (note.timestamp - renderNow) * pxPerSec;
         if (x < -40 || x > w + 40) continue;
         drawDetectedNote(ctx, note, x, laneY(note.soundClass === 'unknown' ? 'ch' : (note.soundClass as Sound)));
       }
 
-      // HUD: tempo / accuracy / counters, painted onto the canvas
-      drawHUD(ctx, scoring, fps, w, now);
+      drawHUD(ctx, scoring, fps, w, pausedRef.current);
 
       raf = requestAnimationFrame(draw);
     };
@@ -209,6 +292,21 @@ export function Practice() {
       ro.disconnect();
     };
   }, []);
+
+  // Spacebar toggles pause once the session is running. Ignored during
+  // start-up / errors so the tap-to-start button can own the first gesture.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      if (status !== 'running' && status !== 'paused') return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      e.preventDefault();
+      if (status === 'running') pauseNow();
+      else resumeNow();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [status, pauseNow, resumeNow]);
 
   useEffect(() => {
     return () => {
@@ -226,16 +324,19 @@ export function Practice() {
       await input.start();
       inputRef.current = input;
 
-      // Schedule the first beat COUNT_IN_SECONDS in the future so the user
-      // sees the pattern approaching before they need to play.
+      const now = input.now();
       scoringRef.current.reset();
-      registeredBeatsRef.current.clear();
-      outcomesRef.current.clear();
-      lastDetectedTsRef.current = input.now();
+      registeredBeatsRef.current = new Set();
+      outcomesRef.current = new Map();
+      lastDetectedTsRef.current = now;
+      sessionStartRef.current = now;
+      pausedDurationRef.current = 0;
+      pauseStartedAtRef.current = null;
+      pausedRef.current = false;
       schedulerRef.current = new ToqueScheduler({
         toque,
         bpm,
-        startTime: input.now() + COUNT_IN_SECONDS,
+        startTime: now + COUNT_IN_SECONDS,
       });
 
       setStatus('running');
@@ -254,14 +355,26 @@ export function Practice() {
         {toque.name} · {bpm} bpm
       </div>
 
-      <Link
-        href="/"
-        className="absolute top-4 right-4 px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur text-text-dim text-sm border border-border"
-      >
-        ← Back
-      </Link>
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        {status === 'running' && (
+          <button
+            type="button"
+            onClick={pauseNow}
+            className="px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur text-text text-sm border border-border"
+            title="Pause (space)"
+          >
+            Pause
+          </button>
+        )}
+        <Link
+          href="/"
+          className="px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur text-text-dim text-sm border border-border"
+        >
+          ← Back
+        </Link>
+      </div>
 
-      {status !== 'running' && (
+      {(status === 'idle' || status === 'starting' || status === 'error') && (
         <div className="absolute inset-0 flex items-center justify-center bg-bg/70 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-bg-elev border border-border max-w-sm">
             <h2 className="text-xl font-semibold">Ready?</h2>
@@ -282,6 +395,15 @@ export function Practice() {
           </div>
         </div>
       )}
+
+      {status === 'paused' && summary && (
+        <SummaryOverlay
+          summary={summary}
+          onResume={resumeNow}
+          onRestart={restartNow}
+          onEnd={endSession}
+        />
+      )}
     </main>
   );
 }
@@ -300,9 +422,6 @@ function findBeatId(
   result: BeatResult,
   now: number,
 ): number | null {
-  // Look up the beat whose step matches within the recent window. This is
-  // cheap at our scale (~16 beats per second) and avoids threading beat ids
-  // through the scoring engine API.
   if (result.step == null) return null;
   const beats = scheduler.beatsInWindow(now - 0.5, now + 0.1);
   let closest: { id: number; delta: number } | null = null;
@@ -323,7 +442,7 @@ function drawTarget(
 ) {
   const color = SOUND_COLORS[beat.sound];
   const r = beat.accent === 2 ? 16 : 12;
-  const now = performance.now() / 1000; // for outcome fade — UI-local clock is fine
+  const now = performance.now() / 1000;
 
   if (outcome) {
     const age = now - outcome.at;
@@ -376,7 +495,7 @@ function drawHUD(
   scoring: ScoringEngine,
   fps: number,
   w: number,
-  _now: number,
+  paused: boolean,
 ) {
   const accuracy = scoring.rollingAccuracy(20);
   const recent = scoring.beatResults.slice(-30);
@@ -394,9 +513,12 @@ function drawHUD(
   ctx.font = '12px ui-monospace, Consolas, monospace';
   ctx.textAlign = 'right';
   ctx.fillText(`fps ${fps}`, w - 16, 56);
+  if (paused) {
+    ctx.fillStyle = '#ff8a3d';
+    ctx.fillText('PAUSED', w - 16, 36);
+  }
   ctx.textAlign = 'start';
 
-  // Accuracy readout, bottom-left
   ctx.fillStyle = '#e6e8f0';
   ctx.font = 'bold 28px ui-monospace, Consolas, monospace';
   ctx.fillText(`${Math.round(accuracy * 100)}%`, 16, 40);
@@ -404,21 +526,210 @@ function drawHUD(
   ctx.fillStyle = '#8a93b0';
   ctx.fillText('accuracy (last 20)', 16, 56);
 
-  // Outcome bar
   const labels: Outcome[] = ['perfect', 'good', 'wrong_sound', 'late', 'miss', 'mistake'];
   let x = 16;
   const y = 76;
   ctx.font = '10px ui-monospace, Consolas, monospace';
   for (const key of labels) {
     const n = counts[key];
-    if (n === 0) {
-      ctx.fillStyle = '#2a3048';
-    } else {
-      ctx.fillStyle = OUTCOME_COLORS[key];
-    }
+    ctx.fillStyle = n === 0 ? '#2a3048' : OUTCOME_COLORS[key];
     ctx.fillRect(x, y, 18, 4);
     ctx.fillStyle = '#8a93b0';
     ctx.fillText(`${key[0]?.toUpperCase()}${n > 0 ? n : ''}`, x, y + 18);
     x += 30;
   }
+}
+
+// --------------------------------------------------------------------------
+// Session summary
+// --------------------------------------------------------------------------
+
+interface SessionSummary {
+  elapsedSec: number;
+  totalScoredBeats: number;
+  accuracy: number;
+  outcomeCounts: Record<Outcome, number>;
+  perSound: Record<'dong' | 'ch' | 'ding', number | null>;
+  bestStreak: number;
+}
+
+function buildSummary(scoring: ScoringEngine, elapsedSec: number): SessionSummary {
+  const counts: Record<Outcome, number> = {
+    perfect: 0,
+    good: 0,
+    wrong_sound: 0,
+    late: 0,
+    miss: 0,
+    mistake: 0,
+  };
+  let bestStreak = 0;
+  let currentStreak = 0;
+  let positiveScore = 0;
+  let scoredBeats = 0;
+  for (const r of scoring.beatResults) {
+    if (r.outcome === 'mistake') continue;
+    counts[r.outcome] += 1;
+    scoredBeats += 1;
+    if (r.score > 0) {
+      positiveScore += r.score;
+      currentStreak += 1;
+      if (currentStreak > bestStreak) bestStreak = currentStreak;
+    } else {
+      currentStreak = 0;
+    }
+  }
+  counts.mistake = scoring.mistakeCount();
+
+  return {
+    elapsedSec,
+    totalScoredBeats: scoredBeats,
+    accuracy: scoredBeats > 0 ? positiveScore / scoredBeats : 0,
+    outcomeCounts: counts,
+    perSound: scoring.soundAccuracy(),
+    bestStreak,
+  };
+}
+
+function SummaryOverlay({
+  summary,
+  onResume,
+  onRestart,
+  onEnd,
+}: {
+  summary: SessionSummary;
+  onResume: () => void;
+  onRestart: () => void;
+  onEnd: () => void;
+}) {
+  const minutes = Math.floor(summary.elapsedSec / 60);
+  const seconds = Math.floor(summary.elapsedSec % 60);
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-bg/75 backdrop-blur-sm px-4">
+      <div className="flex flex-col gap-5 px-6 py-6 rounded-2xl bg-bg-elev border border-border w-full max-w-md">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-xl font-semibold">Paused</h2>
+          <span className="text-xs text-text-dim font-mono">
+            {minutes}:{String(seconds).padStart(2, '0')} active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <Stat label="Accuracy" value={`${Math.round(summary.accuracy * 100)}%`} />
+          <Stat label="Beats" value={String(summary.totalScoredBeats)} />
+          <Stat label="Best streak" value={String(summary.bestStreak)} />
+        </div>
+
+        <OutcomeBreakdown counts={summary.outcomeCounts} />
+        <PerSoundBreakdown perSound={summary.perSound} />
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onResume}
+            className="flex-1 px-4 py-2 rounded-full bg-accent text-bg font-semibold"
+          >
+            Resume
+          </button>
+          <button
+            type="button"
+            onClick={onRestart}
+            className="flex-1 px-4 py-2 rounded-full bg-bg border border-border text-text"
+          >
+            Restart
+          </button>
+          <button
+            type="button"
+            onClick={onEnd}
+            className="flex-1 px-4 py-2 rounded-full bg-bg border border-border text-text-dim"
+          >
+            End session
+          </button>
+        </div>
+        <p className="text-[10px] text-text-dim text-center -mt-2">
+          press space to resume
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-2 py-2 rounded-xl bg-bg border border-border">
+      <span className="font-mono text-xl font-semibold text-text">{value}</span>
+      <span className="text-[10px] uppercase tracking-wider text-text-dim">{label}</span>
+    </div>
+  );
+}
+
+function OutcomeBreakdown({ counts }: { counts: Record<Outcome, number> }) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const order: Outcome[] = ['perfect', 'good', 'wrong_sound', 'late', 'miss', 'mistake'];
+  if (total === 0) {
+    return <p className="text-xs text-text-dim text-center">No beats scored yet.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex w-full h-2 rounded-full overflow-hidden bg-bg border border-border">
+        {order.map((key) => {
+          const n = counts[key];
+          if (n === 0) return null;
+          const pct = (n / total) * 100;
+          return (
+            <div
+              key={key}
+              style={{ width: `${pct}%`, background: OUTCOME_COLORS[key] }}
+              title={`${key}: ${n}`}
+            />
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-[11px]">
+        {order.map((key) => (
+          <div key={key} className="flex items-center gap-1.5 text-text-dim">
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ background: OUTCOME_COLORS[key] }}
+            />
+            <span className="capitalize">{key.replace('_', ' ')}</span>
+            <span className="ml-auto font-mono text-text">{counts[key]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PerSoundBreakdown({
+  perSound,
+}: {
+  perSound: Record<'dong' | 'ch' | 'ding', number | null>;
+}) {
+  const rows: Array<'dong' | 'ch' | 'ding'> = ['dong', 'ch', 'ding'];
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] uppercase tracking-wider text-text-dim">Per sound</span>
+      <div className="grid grid-cols-3 gap-2">
+        {rows.map((s) => {
+          const v = perSound[s];
+          return (
+            <div
+              key={s}
+              className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-bg border border-border"
+            >
+              <span
+                className="w-3 h-3 rounded-full"
+                style={{ background: SOUND_COLORS[s] }}
+              />
+              <span className="text-xs font-medium tracking-wider">{SOUND_LABELS[s]}</span>
+              <span className="font-mono text-sm text-text">
+                {v == null ? '—' : `${Math.round(v * 100)}%`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
