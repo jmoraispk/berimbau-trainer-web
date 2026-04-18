@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearch } from 'wouter';
 import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
+import { Metronome } from '@/audio/Metronome';
 import {
   GLOBAL_BPM_RANGE,
   SOUND_COLORS,
@@ -59,6 +60,8 @@ const OUTCOME_COLORS: Record<Outcome, string> = {
 type Status = 'idle' | 'starting' | 'running' | 'paused' | 'error';
 
 const BPM_STEP = 5;
+const METRONOME_LOOKAHEAD_SEC = 0.25;
+const METRONOME_PREF_KEY = 'berimbau:metronome';
 
 export function Practice() {
   const search = useSearch();
@@ -70,9 +73,11 @@ export function Practice() {
   const scoringRef = useRef(new ScoringEngine());
   const schedulerRef = useRef<ToqueScheduler | null>(null);
   const registeredBeatsRef = useRef<Set<number>>(new Set());
+  const tickedBeatsRef = useRef<Set<number>>(new Set());
   const outcomesRef = useRef<Map<number, BeatResult & { at: number }>>(new Map());
   const lastDetectedTsRef = useRef(-Infinity);
   const pausedRef = useRef(false);
+  const metronomeRef = useRef<Metronome | null>(null);
 
   // Session timing. We track active (unpaused) seconds (via the audio
   // clock) so the summary reports real play time, AND the wall-clock
@@ -90,6 +95,10 @@ export function Practice() {
   const [bpm, setBpm] = useState(initialBpm);
   const bpmRef = useRef(initialBpm);
   const bpmFlashUntilRef = useRef(0);
+  const [metronomeOn, setMetronomeOn] = useState<boolean>(() => {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(METRONOME_PREF_KEY) === '1';
+  });
   // Snapshot of stats shown in the paused summary overlay — re-read each
   // time we pause so React doesn't need to mirror the scoring engine live.
   const [summary, setSummary] = useState<SessionSummary | null>(null);
@@ -120,6 +129,7 @@ export function Practice() {
       startTime: now + RESUME_LEAD_SEC,
     });
     registeredBeatsRef.current = new Set();
+    tickedBeatsRef.current = new Set();
     lastDetectedTsRef.current = now;
     pausedRef.current = false;
     setSummary(null);
@@ -168,6 +178,7 @@ export function Practice() {
     const now = input.now();
     scoringRef.current.reset();
     registeredBeatsRef.current = new Set();
+    tickedBeatsRef.current = new Set();
     outcomesRef.current = new Map();
     lastDetectedTsRef.current = now;
     sessionStartRef.current = now;
@@ -203,6 +214,7 @@ export function Practice() {
         startTime: now + RESUME_LEAD_SEC,
       });
       registeredBeatsRef.current = new Set();
+    tickedBeatsRef.current = new Set();
     }
   }, [toque, status]);
 
@@ -296,6 +308,7 @@ export function Practice() {
       if (scheduler) {
         const beats = scheduler.beatsInWindow(renderNow - 0.3, renderNow + LEAD_SECONDS);
 
+        const metronome = metronomeRef.current;
         for (const beat of beats) {
           if (
             !pausedRef.current &&
@@ -304,6 +317,18 @@ export function Practice() {
           ) {
             scoring.registerTargetBeat(beat.step, beat.sound, beat.beatTime, renderNow);
             registeredBeatsRef.current.add(beat.id);
+          }
+          // Metronome look-ahead — schedule each tick ~250ms before its beat
+          // so the audio scheduler has plenty of headroom; the context plays
+          // it sample-accurately at beat.beatTime regardless of frame jitter.
+          if (
+            !pausedRef.current &&
+            metronome &&
+            !tickedBeatsRef.current.has(beat.id) &&
+            beat.beatTime - renderNow < METRONOME_LOOKAHEAD_SEC
+          ) {
+            metronome.scheduleTick(beat.beatTime, beat.accent === 2);
+            tickedBeatsRef.current.add(beat.id);
           }
           const x = hitX + (beat.beatTime - renderNow) * pxPerSec;
           if (x < -40 || x > w + 40) continue;
@@ -436,6 +461,7 @@ export function Practice() {
     const now = input.now();
     scoringRef.current.reset();
     registeredBeatsRef.current = new Set();
+    tickedBeatsRef.current = new Set();
     outcomesRef.current = new Map();
     lastDetectedTsRef.current = now;
     sessionStartRef.current = now;
@@ -446,6 +472,8 @@ export function Practice() {
     sessionSavedRef.current = false;
     bpmRef.current = initialBpm;
     setBpm(initialBpm);
+    const ctx = input.audioContext;
+    metronomeRef.current = ctx ? new Metronome(ctx, {}, !metronomeOn) : null;
     schedulerRef.current = new ToqueScheduler({
       toque,
       bpm: initialBpm,
@@ -453,6 +481,19 @@ export function Practice() {
     });
     setStatus('running');
   };
+
+  const toggleMetronome = useCallback(() => {
+    setMetronomeOn((prev) => {
+      const next = !prev;
+      metronomeRef.current?.setMuted(!next);
+      try {
+        localStorage.setItem(METRONOME_PREF_KEY, next ? '1' : '0');
+      } catch {
+        // localStorage unavailable (private mode, quota exceeded) — ignore.
+      }
+      return next;
+    });
+  }, []);
 
   const handleStart = async () => {
     if (status === 'starting' || status === 'running') return;
@@ -524,20 +565,31 @@ export function Practice() {
       </div>
 
       <div className="absolute top-4 right-4 flex items-center gap-2">
+        {(status === 'running' || status === 'paused') && (
+          <button
+            type="button"
+            onClick={toggleMetronome}
+            className={`w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border text-sm transition ${
+              metronomeOn ? 'border-accent text-accent' : 'border-border text-text-dim hover:text-text'
+            }`}
+            title={`Metronome ${metronomeOn ? 'on' : 'off'}`}
+            aria-label={`Metronome ${metronomeOn ? 'on' : 'off'}`}
+            aria-pressed={metronomeOn}
+          >
+            <MetronomeIcon on={metronomeOn} />
+          </button>
+        )}
         {status === 'running' && (
           <button
             type="button"
             onClick={pauseNow}
-            className="px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur text-text text-sm border border-border"
+            className="px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur text-text text-sm border border-border hover:border-border-strong transition"
             title="Pause (space)"
           >
             Pause
           </button>
         )}
-        <Link
-          href="/"
-          className="px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur text-text-dim text-sm border border-border"
-        >
+        <Link href="/" className="btn-ghost">
           ← Back
         </Link>
       </div>
@@ -592,6 +644,26 @@ export function Practice() {
         />
       )}
     </main>
+  );
+}
+
+function MetronomeIcon({ on }: { on: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-4 h-4"
+      aria-hidden
+    >
+      {/* Classic mechanical-metronome silhouette: trapezoid body + pendulum */}
+      <path d="M6 17 L14 17 L12 4 L8 4 Z" />
+      <line x1="10" y1="17" x2={on ? 13 : 10} y2="6" />
+      {!on && <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" />}
+    </svg>
   );
 }
 

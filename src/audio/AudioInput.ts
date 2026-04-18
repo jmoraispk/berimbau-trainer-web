@@ -69,6 +69,12 @@ export class AudioInput {
     return this.context?.state === 'running';
   }
 
+  /** Shared AudioContext — exposed so siblings (e.g. Metronome) can piggy-back
+   *  on the same clock and audio graph. Callers must not close it. */
+  get audioContext(): AudioContext | null {
+    return this.context;
+  }
+
   /** Must be called from a user gesture (tap / click / key). */
   async start(): Promise<void> {
     if (this.isRunning) return;
