@@ -575,7 +575,13 @@ export function Practice() {
         </div>
       )}
 
-      {status === 'running' && mode === 'keyboard' && <KeyboardHint />}
+      {status === 'running' && mode === 'keyboard' && (
+        <KeyboardPad
+          onDong={() => inputRef.current?.inject('dong')}
+          onCh={() => inputRef.current?.inject('ch')}
+          onDing={() => inputRef.current?.inject('ding')}
+        />
+      )}
 
       {status === 'paused' && summary && (
         <SummaryOverlay
@@ -589,29 +595,65 @@ export function Practice() {
   );
 }
 
-function KeyboardHint() {
+/**
+ * On-screen triggers for keyboard mode — the same 1/2/3 keys as buttons so
+ * touch devices (phones, iPads, kiosks) can use the trainer without a
+ * physical keyboard. Tappable with mouse or finger; shows the key label
+ * in a corner for discoverability.
+ */
+function KeyboardPad({
+  onDong,
+  onCh,
+  onDing,
+}: {
+  onDong: () => void;
+  onCh: () => void;
+  onDing: () => void;
+}) {
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur border border-border text-[11px] text-text-dim">
-      <Kbd label="1" color={SOUND_COLORS.dong} name="DONG" />
-      <Kbd label="2" color={SOUND_COLORS.ch} name="TCH" />
-      <Kbd label="3" color={SOUND_COLORS.ding} name="DING" />
-      <span className="mx-1 text-text-dim/70">·</span>
-      <span>space to pause</span>
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-stretch gap-2">
+      <PadButton label="1" color={SOUND_COLORS.dong} name="DONG" onPress={onDong} />
+      <PadButton label="2" color={SOUND_COLORS.ch} name="TCH" onPress={onCh} />
+      <PadButton label="3" color={SOUND_COLORS.ding} name="DING" onPress={onDing} />
     </div>
   );
 }
 
-function Kbd({ label, color, name }: { label: string; color: string; name: string }) {
+function PadButton({
+  label,
+  color,
+  name,
+  onPress,
+}: {
+  label: string;
+  color: string;
+  name: string;
+  onPress: () => void;
+}) {
+  // Fire on pointerdown (not click) so latency matches keyboard injection:
+  // we want the beat timestamp to be as close to the user's intent as
+  // possible. preventDefault stops a trailing mouse click from double-firing.
+  const handler = (e: React.PointerEvent) => {
+    e.preventDefault();
+    onPress();
+  };
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <kbd
-        className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-mono font-bold text-bg"
-        style={{ background: color }}
-      >
+    <button
+      type="button"
+      onPointerDown={handler}
+      onClick={(e) => e.preventDefault()}
+      className="relative min-w-[80px] px-4 pt-4 pb-2 rounded-xl bg-bg-elev/85 backdrop-blur border border-border text-bg font-bold tracking-wider text-sm flex flex-col items-center gap-0.5 active:scale-95 transition"
+      style={{
+        color: '#0b0f1a',
+        background: `linear-gradient(180deg, ${color} 0%, ${color}dd 100%)`,
+        boxShadow: `0 10px 28px -14px ${color}aa`,
+      }}
+    >
+      <span className="text-[10px] font-mono absolute top-1.5 left-2 opacity-70">
         {label}
-      </kbd>
+      </span>
       <span>{name}</span>
-    </span>
+    </button>
   );
 }
 
