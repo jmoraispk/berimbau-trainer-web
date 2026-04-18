@@ -14,6 +14,7 @@
  */
 
 import type { BeatEvent, ToquePattern, Sound } from './rhythms';
+import { GLOBAL_BPM_RANGE } from './rhythms';
 
 export interface TargetBeat {
   /** Global beat index since startTime — unique, monotonic. */
@@ -30,7 +31,7 @@ export interface TargetBeat {
 
 export interface SchedulerOptions {
   toque: ToquePattern;
-  /** Quarter-note BPM; clamped to the toque's bpmRange by the caller. */
+  /** Quarter-note BPM; clamped to GLOBAL_BPM_RANGE by the caller. */
   bpm: number;
   /** AudioContext time (seconds) when cycle 0, step 0 lands on the hit line. */
   startTime: number;
@@ -90,8 +91,12 @@ export class ToqueScheduler {
   }
 }
 
-/** Clamp a BPM request into the toque's supported range. */
-export function clampBpm(toque: ToquePattern, bpm: number): number {
-  const [lo, hi] = toque.bpmRange;
+/**
+ * Clamp a BPM request into GLOBAL_BPM_RANGE. Accepts a toque for callsite
+ * symmetry but ignores the toque's traditional range — every toque is
+ * rehearsable at any tempo the global range permits.
+ */
+export function clampBpm(_toque: ToquePattern | null | undefined, bpm: number): number {
+  const [lo, hi] = GLOBAL_BPM_RANGE;
   return Math.max(lo, Math.min(hi, bpm));
 }

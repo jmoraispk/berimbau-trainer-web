@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { TOQUES, SOUND_COLORS, SOUND_LABELS, type ToqueName, type Sound } from '@/engine/rhythms';
+import {
+  GLOBAL_BPM_RANGE,
+  TOQUES,
+  SOUND_COLORS,
+  SOUND_LABELS,
+  type ToqueName,
+  type Sound,
+} from '@/engine/rhythms';
 import { preloadActiveProfiles } from '@/audio/active-profiles';
 import type { SavedCalibration } from '@/engine/calibration';
 
@@ -87,17 +94,17 @@ export function Home() {
         </div>
         <input
           type="range"
-          min={toque.bpmRange[0]}
-          max={toque.bpmRange[1]}
+          min={GLOBAL_BPM_RANGE[0]}
+          max={GLOBAL_BPM_RANGE[1]}
           step={1}
           value={bpm}
           onChange={(e) => setBpm(Number(e.target.value))}
           className="w-full accent-accent"
         />
         <div className="flex justify-between text-xs text-text-dim">
-          <span>{toque.bpmRange[0]}</span>
+          <span>{GLOBAL_BPM_RANGE[0]}</span>
           <span>default {toque.defaultBpm}</span>
-          <span>{toque.bpmRange[1]}</span>
+          <span>{GLOBAL_BPM_RANGE[1]}</span>
         </div>
       </section>
 

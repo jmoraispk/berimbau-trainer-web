@@ -183,6 +183,16 @@ export const TOQUES: Record<ToqueName, ToquePattern> = {
   },
 };
 
+/**
+ * Single BPM range the UI exposes for every toque.
+ *
+ * Each toque still carries its own traditional `bpmRange` as domain
+ * metadata (useful for a future "recommended speed" hint), but the
+ * practice slider and clampBpm use this global range so any toque can
+ * be rehearsed at any tempo.
+ */
+export const GLOBAL_BPM_RANGE: [number, number] = [10, 200];
+
 export const SOUND_COLORS: Record<Sound, string> = {
   dong: '#e67832',
   ch: '#64b4f0',

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ToqueScheduler, clampBpm } from './scheduler';
-import { TOQUES } from './rhythms';
+import { GLOBAL_BPM_RANGE, TOQUES } from './rhythms';
 
 const angola = TOQUES['Angola'];
 
@@ -46,16 +46,22 @@ describe('ToqueScheduler', () => {
   });
 });
 
-describe('clampBpm', () => {
-  it('clamps below the range', () => {
-    expect(clampBpm(angola, 20)).toBe(angola.bpmRange[0]);
+describe('clampBpm (global range, toque-independent)', () => {
+  it('clamps below the global minimum', () => {
+    expect(clampBpm(angola, 1)).toBe(GLOBAL_BPM_RANGE[0]);
   });
 
-  it('clamps above the range', () => {
-    expect(clampBpm(angola, 500)).toBe(angola.bpmRange[1]);
+  it('clamps above the global maximum', () => {
+    expect(clampBpm(angola, 500)).toBe(GLOBAL_BPM_RANGE[1]);
   });
 
-  it('passes through values inside the range', () => {
+  it('passes through values inside the global range', () => {
     expect(clampBpm(angola, 70)).toBe(70);
+  });
+
+  it('allows tempos outside any toque traditional range', () => {
+    // Angola's traditional range is ~40-80; 30 and 150 are both valid now.
+    expect(clampBpm(angola, 30)).toBe(30);
+    expect(clampBpm(angola, 150)).toBe(150);
   });
 });
