@@ -78,6 +78,8 @@ export function Practice() {
   const lastDetectedTsRef = useRef(-Infinity);
   const pausedRef = useRef(false);
   const metronomeRef = useRef<Metronome | null>(null);
+  /** Audio-clock time of the scheduler's first beat; used for the count-in. */
+  const firstBeatAtRef = useRef(0);
 
   // Session timing. We track active (unpaused) seconds (via the audio
   // clock) so the summary reports real play time, AND the wall-clock
@@ -123,11 +125,13 @@ export function Practice() {
     }
     // Fresh scheduler so the pattern picks up after a short lead-in rather
     // than rushing through every beat missed while paused.
+    const firstBeat = now + RESUME_LEAD_SEC;
     schedulerRef.current = new ToqueScheduler({
       toque,
       bpm: bpmRef.current,
-      startTime: now + RESUME_LEAD_SEC,
+      startTime: firstBeat,
     });
+    firstBeatAtRef.current = firstBeat;
     registeredBeatsRef.current = new Set();
     tickedBeatsRef.current = new Set();
     lastDetectedTsRef.current = now;
@@ -186,11 +190,13 @@ export function Practice() {
     pausedDurationRef.current = 0;
     pauseStartedAtRef.current = null;
     sessionSavedRef.current = false;
+    const firstBeat = now + COUNT_IN_SECONDS;
     schedulerRef.current = new ToqueScheduler({
       toque,
       bpm: bpmRef.current,
-      startTime: now + COUNT_IN_SECONDS,
+      startTime: firstBeat,
     });
+    firstBeatAtRef.current = firstBeat;
     pausedRef.current = false;
     setSummary(null);
     setStatus('running');
@@ -208,13 +214,15 @@ export function Practice() {
     const input = inputRef.current;
     if (status === 'running' && input) {
       const now = input.now();
+      const firstBeat = now + RESUME_LEAD_SEC;
       schedulerRef.current = new ToqueScheduler({
         toque,
         bpm: next,
-        startTime: now + RESUME_LEAD_SEC,
+        startTime: firstBeat,
       });
+      firstBeatAtRef.current = firstBeat;
       registeredBeatsRef.current = new Set();
-    tickedBeatsRef.current = new Set();
+      tickedBeatsRef.current = new Set();
     }
   }, [toque, status]);
 
@@ -371,6 +379,18 @@ export function Practice() {
         drawDetectedNote(ctx, note, x, laneY(note.soundClass === 'unknown' ? 'ch' : (note.soundClass as Sound)));
       }
 
+      // Count-in overlay — visible when the first beat is still more
+      // than ~50 ms away. A large centered number fades over the last
+      // second so it doesn't linger on top of the first real beat.
+      if (firstBeatAtRef.current > 0 && !pausedRef.current) {
+        const untilStart = firstBeatAtRef.current - renderNow;
+        if (untilStart > 0.05) {
+          drawCountIn(ctx, w, h, untilStart);
+        } else if (untilStart > -0.6) {
+          drawGo(ctx, w, h, untilStart);
+        }
+      }
+
       drawHUD(
         ctx,
         scoring,
@@ -474,11 +494,13 @@ export function Practice() {
     setBpm(initialBpm);
     const ctx = input.audioContext;
     metronomeRef.current = ctx ? new Metronome(ctx, {}, !metronomeOn) : null;
+    const firstBeat = now + COUNT_IN_SECONDS;
     schedulerRef.current = new ToqueScheduler({
       toque,
       bpm: initialBpm,
-      startTime: now + COUNT_IN_SECONDS,
+      startTime: firstBeat,
     });
+    firstBeatAtRef.current = firstBeat;
     setStatus('running');
   };
 
@@ -809,6 +831,49 @@ function drawDetectedNote(
   ctx.arc(x, y + 30, r, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
+}
+
+/**
+ * Pre-first-beat countdown overlay. Shows the integer ceiling of the
+ * seconds remaining, fading in over the trailing 0.4 s of each digit so
+ * 2 → 1 doesn't feel like a hard cut.
+ */
+function drawCountIn(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  untilStart: number,
+) {
+  const label = Math.ceil(untilStart).toString();
+  const frac = untilStart - Math.floor(untilStart); // 0 .. 1, where 0 = "digit just appeared"
+  const alpha = Math.min(0.9, 0.35 + frac * 0.6);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 120px ui-monospace, Consolas, monospace';
+  ctx.fillStyle = '#141a2a';
+  ctx.fillText(label, w / 2 + 3, h / 2 + 3);
+  ctx.fillStyle = '#ff8a3d';
+  ctx.fillText(label, w / 2, h / 2);
+  ctx.font = '11px ui-monospace, Consolas, monospace';
+  ctx.fillStyle = '#8a93b0';
+  ctx.fillText('GET READY', w / 2, h / 2 + 78);
+  ctx.restore();
+}
+
+/** "GO" flash for the first ~0.6 s after the first beat lands. */
+function drawGo(ctx: CanvasRenderingContext2D, w: number, h: number, untilStart: number) {
+  const age = -untilStart; // 0 at start, grows
+  const alpha = Math.max(0, 1 - age / 0.5);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 64px ui-sans-serif, system-ui, sans-serif';
+  ctx.fillStyle = '#64f08c';
+  ctx.fillText('GO', w / 2, h / 2);
+  ctx.restore();
 }
 
 function drawHUD(
