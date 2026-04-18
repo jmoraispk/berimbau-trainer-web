@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from 'wouter';
 import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
 import {
+  GLOBAL_BPM_RANGE,
   SOUND_COLORS,
   SOUND_LABELS,
   TOQUES,
@@ -57,10 +58,12 @@ const OUTCOME_COLORS: Record<Outcome, string> = {
 
 type Status = 'idle' | 'starting' | 'running' | 'paused' | 'error';
 
+const BPM_STEP = 5;
+
 export function Practice() {
   const search = useSearch();
   const [, navigate] = useLocation();
-  const { toque, bpm } = useMemo(() => parseParams(search), [search]);
+  const { toque, bpm: initialBpm } = useMemo(() => parseParams(search), [search]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const inputRef = useRef<AudioInput | null>(null);
@@ -82,6 +85,11 @@ export function Practice() {
   const [status, setStatus] = useState<Status>('idle');
   const [mode, setMode] = useState<'mic' | 'keyboard'>('mic');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // BPM is adjustable mid-practice. Display value in state; the render
+  // loop reads the ref so a BPM bump doesn't re-render until the HUD flash.
+  const [bpm, setBpm] = useState(initialBpm);
+  const bpmRef = useRef(initialBpm);
+  const bpmFlashUntilRef = useRef(0);
   // Snapshot of stats shown in the paused summary overlay — re-read each
   // time we pause so React doesn't need to mirror the scoring engine live.
   const [summary, setSummary] = useState<SessionSummary | null>(null);
@@ -108,7 +116,7 @@ export function Practice() {
     // than rushing through every beat missed while paused.
     schedulerRef.current = new ToqueScheduler({
       toque,
-      bpm,
+      bpm: bpmRef.current,
       startTime: now + RESUME_LEAD_SEC,
     });
     registeredBeatsRef.current = new Set();
@@ -116,7 +124,7 @@ export function Practice() {
     pausedRef.current = false;
     setSummary(null);
     setStatus('running');
-  }, [toque, bpm]);
+  }, [toque]);
 
   const restartNow = useCallback(() => {
     const input = inputRef.current;
@@ -132,13 +140,13 @@ export function Practice() {
     pauseStartedAtRef.current = null;
     schedulerRef.current = new ToqueScheduler({
       toque,
-      bpm,
+      bpm: bpmRef.current,
       startTime: now + COUNT_IN_SECONDS,
     });
     pausedRef.current = false;
     setSummary(null);
     setStatus('running');
-  }, [toque, bpm]);
+  }, [toque]);
 
   const endSession = useCallback(() => {
     const input = inputRef.current;
@@ -153,7 +161,7 @@ export function Practice() {
         startedAt: sessionStartWallRef.current,
         endedAt: Date.now(),
         toqueName: toque.name,
-        bpm,
+        bpm: bpmRef.current,
         elapsedSec: built.elapsedSec,
         accuracy: built.accuracy,
         totalScoredBeats: built.totalScoredBeats,
@@ -165,7 +173,28 @@ export function Practice() {
     void input?.stop();
     inputRef.current = null;
     navigate('/');
-  }, [navigate, toque, bpm]);
+  }, [navigate, toque]);
+
+  const changeBpm = useCallback((delta: number) => {
+    const next = clampBpm(toque, bpmRef.current + delta);
+    if (next === bpmRef.current) return;
+    bpmRef.current = next;
+    setBpm(next);
+    bpmFlashUntilRef.current = performance.now() / 1000 + 1.2;
+
+    // Mid-session change: rebuild the scheduler at the new tempo with a
+    // short lead-in so the next beat doesn't jump on top of the hit line.
+    const input = inputRef.current;
+    if (status === 'running' && input) {
+      const now = input.now();
+      schedulerRef.current = new ToqueScheduler({
+        toque,
+        bpm: next,
+        startTime: now + RESUME_LEAD_SEC,
+      });
+      registeredBeatsRef.current = new Set();
+    }
+  }, [toque, status]);
 
   const elapsedActive = (now: number): number => {
     if (!sessionStartRef.current) return 0;
@@ -307,7 +336,15 @@ export function Practice() {
         drawDetectedNote(ctx, note, x, laneY(note.soundClass === 'unknown' ? 'ch' : (note.soundClass as Sound)));
       }
 
-      drawHUD(ctx, scoring, fps, w, pausedRef.current);
+      drawHUD(
+        ctx,
+        scoring,
+        fps,
+        w,
+        pausedRef.current,
+        bpmRef.current,
+        performance.now() / 1000 < bpmFlashUntilRef.current,
+      );
 
       raf = requestAnimationFrame(draw);
     };
@@ -346,11 +383,17 @@ export function Practice() {
       } else if (e.code === 'Digit3' || e.key === '3') {
         e.preventDefault();
         input.inject('ding');
+      } else if (e.key === '-' || e.key === '_' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        changeBpm(-BPM_STEP);
+      } else if (e.key === '=' || e.key === '+' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        changeBpm(BPM_STEP);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [status, pauseNow, resumeNow]);
+  }, [status, pauseNow, resumeNow, changeBpm]);
 
   useEffect(() => {
     return () => {
@@ -371,9 +414,11 @@ export function Practice() {
     pausedDurationRef.current = 0;
     pauseStartedAtRef.current = null;
     pausedRef.current = false;
+    bpmRef.current = initialBpm;
+    setBpm(initialBpm);
     schedulerRef.current = new ToqueScheduler({
       toque,
-      bpm,
+      bpm: initialBpm,
       startTime: now + COUNT_IN_SECONDS,
     });
     setStatus('running');
@@ -415,8 +460,37 @@ export function Practice() {
     <main className="relative h-full w-full">
       <canvas ref={canvasRef} className="block h-full w-full" />
 
-      <div className="absolute top-4 left-4 text-xs text-text-dim font-mono">
-        {toque.name} · {bpm} bpm
+      <div className="absolute top-4 left-4 flex items-center gap-2">
+        <span className="text-xs text-text-dim font-mono">{toque.name}</span>
+        {status === 'running' ? (
+          <div className="inline-flex items-center gap-0 rounded-full bg-bg-elev/80 backdrop-blur border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => changeBpm(-BPM_STEP)}
+              disabled={bpm <= GLOBAL_BPM_RANGE[0]}
+              className="w-7 h-7 flex items-center justify-center text-text-dim hover:text-text disabled:opacity-30"
+              title="Slower (−)"
+              aria-label="Slower"
+            >
+              −
+            </button>
+            <span className="px-2 font-mono text-sm text-text min-w-[4.5rem] text-center">
+              {bpm} bpm
+            </span>
+            <button
+              type="button"
+              onClick={() => changeBpm(BPM_STEP)}
+              disabled={bpm >= GLOBAL_BPM_RANGE[1]}
+              className="w-7 h-7 flex items-center justify-center text-text-dim hover:text-text disabled:opacity-30"
+              title="Faster (=)"
+              aria-label="Faster"
+            >
+              +
+            </button>
+          </div>
+        ) : (
+          <span className="text-xs text-text-dim font-mono">· {bpm} bpm</span>
+        )}
       </div>
 
       <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -599,6 +673,8 @@ function drawHUD(
   fps: number,
   w: number,
   paused: boolean,
+  bpm: number,
+  bpmFlash: boolean,
 ) {
   const accuracy = scoring.rollingAccuracy(20);
   const recent = scoring.beatResults.slice(-30);
@@ -620,6 +696,14 @@ function drawHUD(
     ctx.fillStyle = '#ff8a3d';
     ctx.fillText('PAUSED', w - 16, 36);
   }
+  // Large BPM readout on the right — flashes orange briefly when the user
+  // bumps the tempo so the change registers in peripheral vision.
+  ctx.fillStyle = bpmFlash ? '#ff8a3d' : '#e6e8f0';
+  ctx.font = 'bold 24px ui-monospace, Consolas, monospace';
+  ctx.fillText(`${bpm}`, w - 16, 100);
+  ctx.fillStyle = '#8a93b0';
+  ctx.font = '10px ui-monospace, Consolas, monospace';
+  ctx.fillText('bpm', w - 16, 116);
   ctx.textAlign = 'start';
 
   ctx.fillStyle = '#e6e8f0';
