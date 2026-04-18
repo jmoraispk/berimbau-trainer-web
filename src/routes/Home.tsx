@@ -156,24 +156,35 @@ export function Home() {
 
       <section className="w-full flex flex-col gap-2">
         <SectionLabel>Pattern</SectionLabel>
-        <div className="card p-2 grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1">
-          {preview.map((e) => (
-            <div
-              key={e.step}
-              className="aspect-square rounded-[4px] flex items-center justify-center text-[10px] font-bold relative"
-              style={{
-                background: e.sound === 'rest' ? '#2a3048' : SOUND_COLORS[e.sound],
-                color: e.sound === 'rest' ? '#4a5370' : '#0b0f1a',
-                opacity: e.sound === 'rest' ? 0.5 : e.accent === 2 ? 1 : 0.75,
-              }}
-              title={`step ${e.step} · ${SOUND_LABELS[e.sound]}${e.accent === 2 ? ' (accent)' : ''}`}
-            >
-              {e.sound === 'rest' ? '' : SOUND_LABELS[e.sound][0]}
-              {e.step % 4 === 0 && e.sound === 'rest' && (
-                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-border-strong" />
-              )}
-            </div>
-          ))}
+        <div className="card p-2.5 flex flex-col gap-1.5">
+          <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1">
+            {preview.map((e) => (
+              <div
+                key={e.step}
+                className="aspect-square rounded-[4px] flex items-center justify-center text-[10px] font-bold"
+                style={{
+                  background: e.sound === 'rest' ? '#2a3048' : SOUND_COLORS[e.sound],
+                  color: e.sound === 'rest' ? '#4a5370' : '#0b0f1a',
+                  opacity: e.sound === 'rest' ? 0.5 : e.accent === 2 ? 1 : 0.75,
+                }}
+                title={`step ${e.step} · ${SOUND_LABELS[e.sound]}${e.accent === 2 ? ' (accent)' : ''}`}
+              >
+                {e.sound === 'rest' ? '' : SOUND_LABELS[e.sound][0]}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1 px-0">
+            {Array.from({ length: 16 }, (_, step) => (
+              <div
+                key={step}
+                className={`text-[9px] text-center font-mono ${
+                  step % 4 === 0 ? 'text-text-dim' : 'text-transparent'
+                }`}
+              >
+                {step % 4 === 0 ? (step / 4) + 1 : '·'}
+              </div>
+            ))}
+          </div>
         </div>
         <p className="text-[10px] text-text-dim">
           16 steps over 2 bars · accented beats are fully saturated

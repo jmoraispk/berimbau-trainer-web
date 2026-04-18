@@ -56,22 +56,33 @@ export function Songs() {
             {SONGS.length} traditional capoeira songs from lalaue.com.
           </p>
         </div>
-        <Link
-          href="/"
-          className="shrink-0 px-3 py-1.5 rounded-full bg-bg-elev border border-border text-sm text-text-dim"
-        >
+        <Link href="/" className="btn-ghost shrink-0">
           ← Back
         </Link>
       </header>
 
       <div className="flex flex-col gap-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search title, author, lyrics…"
-          className="w-full px-4 py-2.5 rounded-xl bg-bg-elev border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-accent"
-        />
+        <div className="relative">
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-dim pointer-events-none"
+            aria-hidden
+          >
+            <circle cx="9" cy="9" r="5" />
+            <path d="M13 13l4 4" />
+          </svg>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search title, author, or lyrics…"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-bg-elev border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-accent"
+          />
+        </div>
 
         <div className="flex flex-wrap gap-2">
           {STYLE_ORDER.map((style) => (
@@ -79,13 +90,22 @@ export function Songs() {
               key={style}
               type="button"
               onClick={() => setStyleFilter(style)}
-              className={`px-3 py-1 rounded-full text-xs border transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border transition ${
                 styleFilter === style
                   ? 'bg-accent text-bg border-accent'
-                  : 'bg-bg-elev text-text border-border hover:border-text-dim'
+                  : 'bg-bg-elev text-text border-border hover:border-border-strong'
               }`}
             >
-              {style === 'all' ? 'All' : style.replace('_', ' ')} · {counts[style]}
+              <span className="capitalize">
+                {style === 'all' ? 'All' : style.replace('_', ' ')}
+              </span>
+              <span
+                className={`text-[10px] font-mono ${
+                  styleFilter === style ? 'text-bg/70' : 'text-text-dim'
+                }`}
+              >
+                {counts[style]}
+              </span>
             </button>
           ))}
         </div>
@@ -95,14 +115,37 @@ export function Songs() {
         )}
       </div>
 
-      <div className="text-xs text-text-dim">
-        {filtered.length === SONGS.length
-          ? `All ${SONGS.length} songs`
-          : `${filtered.length} of ${SONGS.length} songs`}
+      <div className="flex items-center justify-between text-xs text-text-dim">
+        <span>
+          {filtered.length === SONGS.length
+            ? `All ${SONGS.length} songs`
+            : `${filtered.length} of ${SONGS.length}`}
+        </span>
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            className="hover:text-text transition"
+          >
+            Clear search
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-text-dim text-sm">No songs match.</p>
+        <div className="card flex flex-col items-center gap-2 py-8 text-center">
+          <span className="text-sm text-text-dim">Nothing matches that search.</span>
+          <button
+            type="button"
+            onClick={() => {
+              setQuery('');
+              setStyleFilter('all');
+            }}
+            className="btn-ghost"
+          >
+            Reset filters
+          </button>
+        </div>
       ) : (
         <ul className="flex flex-col gap-2">
           {filtered.map((song) => (
@@ -119,7 +162,7 @@ function SongRow({ song }: { song: Song }) {
     <li>
       <Link
         href={`/songs/${song.slug}`}
-        className="flex items-center gap-3 px-4 py-3 rounded-xl bg-bg-elev border border-border hover:border-text-dim transition"
+        className="card flex items-center gap-3 px-4 py-3 hover:border-border-strong transition"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">

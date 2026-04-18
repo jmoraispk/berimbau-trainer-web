@@ -69,16 +69,13 @@ export function Settings() {
             Your calibration and practice history live only in this browser.
           </p>
         </div>
-        <Link
-          href="/"
-          className="shrink-0 px-3 py-1.5 rounded-full bg-bg-elev border border-border text-sm text-text-dim"
-        >
+        <Link href="/" className="btn-ghost shrink-0">
           ← Back
         </Link>
       </header>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
           Calibration profile
         </h2>
         <Card>
@@ -98,7 +95,7 @@ export function Settings() {
                 type="button"
                 onClick={onClearCalibration}
                 disabled={busy === 'calibration'}
-                className="shrink-0 px-3 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400 hover:text-red-400 disabled:opacity-50"
+                className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400/60 hover:text-red-400 transition disabled:opacity-50"
               >
                 Clear
               </button>
@@ -108,10 +105,7 @@ export function Settings() {
               <span className="text-sm text-text-dim">
                 No calibration saved — using default profile.
               </span>
-              <Link
-                href="/calibrate"
-                className="shrink-0 px-3 py-1.5 rounded-full border border-border text-sm hover:border-text-dim"
-              >
+              <Link href="/calibrate" className="btn-ghost shrink-0">
                 Calibrate
               </Link>
             </>
@@ -120,7 +114,7 @@ export function Settings() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
           Practice history
         </h2>
         <Card>
@@ -141,7 +135,7 @@ export function Settings() {
                 type="button"
                 onClick={onClearSessions}
                 disabled={busy === 'sessions'}
-                className="shrink-0 px-3 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400 hover:text-red-400 disabled:opacity-50"
+                className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400/60 hover:text-red-400 transition disabled:opacity-50"
               >
                 Clear all
               </button>
@@ -155,7 +149,7 @@ export function Settings() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
           About
         </h2>
         <Card>
@@ -182,7 +176,7 @@ export function Settings() {
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-bg-elev border border-border">
+    <div className="card flex items-center justify-between gap-4 px-4 py-3">
       {children}
     </div>
   );
