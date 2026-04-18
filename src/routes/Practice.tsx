@@ -80,6 +80,7 @@ export function Practice() {
   const pauseStartedAtRef = useRef<number | null>(null);
 
   const [status, setStatus] = useState<Status>('idle');
+  const [mode, setMode] = useState<'mic' | 'keyboard'>('mic');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // Snapshot of stats shown in the paused summary overlay — re-read each
   // time we pause so React doesn't need to mirror the scoring engine live.
@@ -318,16 +319,34 @@ export function Practice() {
     };
   }, []);
 
-  // Spacebar toggles pause once the session is running. Ignored during
-  // start-up / errors so the tap-to-start button can own the first gesture.
+  // Keyboard shortcuts:
+  //   space        — toggle pause (running ↔ paused)
+  //   1 / 2 / 3    — inject DONG / TCH / DING (scored like a real hit)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
-      if (status !== 'running' && status !== 'paused') return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      e.preventDefault();
-      if (status === 'running') pauseNow();
-      else resumeNow();
+
+      if (e.code === 'Space') {
+        if (status !== 'running' && status !== 'paused') return;
+        e.preventDefault();
+        if (status === 'running') pauseNow();
+        else resumeNow();
+        return;
+      }
+
+      if (status !== 'running') return;
+      const input = inputRef.current;
+      if (!input) return;
+      if (e.code === 'Digit1' || e.key === '1') {
+        e.preventDefault();
+        input.inject('dong');
+      } else if (e.code === 'Digit2' || e.key === '2') {
+        e.preventDefault();
+        input.inject('ch');
+      } else if (e.code === 'Digit3' || e.key === '3') {
+        e.preventDefault();
+        input.inject('ding');
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -340,6 +359,26 @@ export function Practice() {
     };
   }, []);
 
+  const beginSession = (input: AudioInput) => {
+    inputRef.current = input;
+    const now = input.now();
+    scoringRef.current.reset();
+    registeredBeatsRef.current = new Set();
+    outcomesRef.current = new Map();
+    lastDetectedTsRef.current = now;
+    sessionStartRef.current = now;
+    sessionStartWallRef.current = Date.now();
+    pausedDurationRef.current = 0;
+    pauseStartedAtRef.current = null;
+    pausedRef.current = false;
+    schedulerRef.current = new ToqueScheduler({
+      toque,
+      bpm,
+      startTime: now + COUNT_IN_SECONDS,
+    });
+    setStatus('running');
+  };
+
   const handleStart = async () => {
     if (status === 'starting' || status === 'running') return;
     setStatus('starting');
@@ -347,27 +386,26 @@ export function Practice() {
     try {
       const input = new AudioInput();
       await input.start();
-      inputRef.current = input;
-
-      const now = input.now();
-      scoringRef.current.reset();
-      registeredBeatsRef.current = new Set();
-      outcomesRef.current = new Map();
-      lastDetectedTsRef.current = now;
-      sessionStartRef.current = now;
-      sessionStartWallRef.current = Date.now();
-      pausedDurationRef.current = 0;
-      pauseStartedAtRef.current = null;
-      pausedRef.current = false;
-      schedulerRef.current = new ToqueScheduler({
-        toque,
-        bpm,
-        startTime: now + COUNT_IN_SECONDS,
-      });
-
-      setStatus('running');
+      setMode('mic');
+      beginSession(input);
     } catch (err) {
       console.error('[Practice] mic start failed', err);
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    }
+  };
+
+  const handleStartKeyboard = async () => {
+    if (status === 'starting' || status === 'running') return;
+    setStatus('starting');
+    setErrorMsg(null);
+    try {
+      const input = new AudioInput();
+      await input.startKeyboardMode();
+      setMode('keyboard');
+      beginSession(input);
+    } catch (err) {
+      console.error('[Practice] keyboard-mode start failed', err);
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setStatus('error');
     }
@@ -401,26 +439,39 @@ export function Practice() {
       </div>
 
       {(status === 'idle' || status === 'starting' || status === 'error') && (
-        <div className="absolute inset-0 flex items-center justify-center bg-bg/70 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-bg-elev border border-border max-w-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-bg/70 backdrop-blur-sm px-4">
+          <div className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-bg-elev border border-border max-w-sm w-full">
             <h2 className="text-xl font-semibold">Ready?</h2>
             <p className="text-text-dim text-sm text-center">
               Playing <span className="text-text">{toque.name}</span> at{' '}
-              <span className="font-mono">{bpm} bpm</span>. Tap to open your mic —
-              the pattern will start after a 2-second count-in.
+              <span className="font-mono">{bpm} bpm</span>. Start the mic to
+              play along, or use the keyboard to try without an instrument.
             </p>
-            <button
-              type="button"
-              onClick={handleStart}
-              disabled={status === 'starting'}
-              className="px-6 py-2 rounded-full bg-accent text-bg font-semibold disabled:opacity-60"
-            >
-              {status === 'starting' ? 'Starting…' : 'Start microphone'}
-            </button>
+            <div className="flex flex-col items-stretch gap-2 w-full">
+              <button
+                type="button"
+                onClick={handleStart}
+                disabled={status === 'starting'}
+                className="px-6 py-2 rounded-full bg-accent text-bg font-semibold disabled:opacity-60"
+              >
+                {status === 'starting' ? 'Starting…' : 'Start microphone'}
+              </button>
+              <button
+                type="button"
+                onClick={handleStartKeyboard}
+                disabled={status === 'starting'}
+                className="px-6 py-2 rounded-full bg-bg border border-border text-text-dim hover:text-text disabled:opacity-60"
+                title="Use the number keys 1 / 2 / 3 as DONG / TCH / DING"
+              >
+                Try keyboard mode
+              </button>
+            </div>
             {errorMsg && <p className="text-sm text-red-400 text-center">{errorMsg}</p>}
           </div>
         </div>
       )}
+
+      {status === 'running' && mode === 'keyboard' && <KeyboardHint />}
 
       {status === 'paused' && summary && (
         <SummaryOverlay
@@ -431,6 +482,32 @@ export function Practice() {
         />
       )}
     </main>
+  );
+}
+
+function KeyboardHint() {
+  return (
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur border border-border text-[11px] text-text-dim">
+      <Kbd label="1" color={SOUND_COLORS.dong} name="DONG" />
+      <Kbd label="2" color={SOUND_COLORS.ch} name="TCH" />
+      <Kbd label="3" color={SOUND_COLORS.ding} name="DING" />
+      <span className="mx-1 text-text-dim/70">·</span>
+      <span>space to pause</span>
+    </div>
+  );
+}
+
+function Kbd({ label, color, name }: { label: string; color: string; name: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <kbd
+        className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-mono font-bold text-bg"
+        style={{ background: color }}
+      >
+        {label}
+      </kbd>
+      <span>{name}</span>
+    </span>
   );
 }
 

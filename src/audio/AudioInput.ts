@@ -25,10 +25,11 @@
 
 import { extractFeatures } from '@/engine/features';
 import { classify } from '@/engine/classifier';
-import type { Profiles } from '@/engine/profiles';
+import type { ClassifiableSound, Profiles } from '@/engine/profiles';
 import type { DetectedNote } from '@/engine/scoring';
 import { audioBus } from './AudioBus';
 import { getActiveProfiles } from './active-profiles';
+import { DEFAULT_PROFILES } from '@/engine/profiles';
 
 // The worklet lives in public/audio/ as plain JS so both dev and prod
 // serve it verbatim (Vite's worker transform injects HMR client code
@@ -96,6 +97,40 @@ export class AudioInput {
 
     document.addEventListener('visibilitychange', this.onVisibility);
     audioBus.emit({ type: 'started' });
+  }
+
+  /**
+   * Keyboard mode — create the AudioContext (so .now() returns a real
+   * monotonic clock) but skip mic permission and the worklet. Only
+   * inject()-driven notes reach audioBus. Useful for demos, testing
+   * without a berimbau, and phones that don't have the mic gesture.
+   */
+  async startKeyboardMode(): Promise<void> {
+    if (this.isRunning) return;
+    this.context = new AudioContext({ latencyHint: 'interactive' });
+    if (this.context.state === 'suspended') await this.context.resume();
+    document.addEventListener('visibilitychange', this.onVisibility);
+    audioBus.emit({ type: 'started' });
+  }
+
+  /**
+   * Push a synthetic note onto audioBus as if the user had played it. The
+   * timestamp is the current audio clock (so scoring matches whichever
+   * beat is at the hit line) and f0 / centroid are pulled from the active
+   * profiles so the note fields look realistic for any downstream display.
+   */
+  inject(sound: ClassifiableSound): DetectedNote {
+    const prof = (this.profiles ?? DEFAULT_PROFILES)[sound];
+    const note: DetectedNote = {
+      timestamp: this.now(),
+      soundClass: sound,
+      confidence: 1,
+      f0: prof.f0Mean,
+      centroid: prof.centroidMean,
+      amplitude: 0.8,
+    };
+    audioBus.pushNote(note);
+    return note;
   }
 
   async stop(): Promise<void> {
