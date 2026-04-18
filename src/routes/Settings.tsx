@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import type { SavedCalibration } from '@/engine/calibration';
 import type { SessionRecord } from '@/engine/session';
@@ -11,6 +11,11 @@ import {
   clearSessions,
   listAllSessions,
 } from '@/storage/sessions-store';
+import {
+  applyBackup,
+  buildBackup,
+  parseBackup,
+} from '@/storage/backup';
 
 /**
  * Local-data management. Everything in this app lives in the browser
@@ -18,10 +23,14 @@ import {
  * needs a way to inspect and wipe both.
  */
 
+type Busy = 'calibration' | 'sessions' | 'export' | 'import' | null;
+
 export function Settings() {
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [busy, setBusy] = useState<'calibration' | 'sessions' | null>(null);
+  const [busy, setBusy] = useState<Busy>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +62,64 @@ export function Settings() {
     const ok = await clearSessions();
     if (ok) setSessions([]);
     setBusy(null);
+  };
+
+  const flashToast = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 4000);
+  };
+
+  const onExport = async () => {
+    setBusy('export');
+    try {
+      const doc = await buildBackup();
+      const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `berimbau-trainer-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      flashToast(`Exported ${doc.sessions.length} session${doc.sessions.length === 1 ? '' : 's'}.`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onImport = async (file: File) => {
+    setBusy('import');
+    try {
+      const text = await file.text();
+      const { ok, error, doc } = parseBackup(text);
+      if (!ok || !doc) {
+        flashToast(error ? `Import failed: ${error}` : 'Import failed.');
+        return;
+      }
+      const replace = confirm(
+        `Import ${doc.sessions.length} session${doc.sessions.length === 1 ? '' : 's'}${
+          doc.calibration ? ' + calibration' : ''
+        }?\n\nOK: replace existing data.\nCancel: merge (adds to current history).`,
+      );
+      const result = await applyBackup(doc, { replaceExisting: replace });
+      // Invalidate the in-memory profile cache so the next mic-start
+      // reads the freshly-imported record from IDB rather than the stale
+      // pre-import value.
+      clearActiveProfiles();
+      const [loaded, all] = await Promise.all([preloadActiveProfiles(), listAllSessions()]);
+      setCalibration(loaded);
+      setSessions(all);
+      flashToast(
+        `Imported ${result.sessionsWritten} session${result.sessionsWritten === 1 ? '' : 's'}${
+          result.calibrationWritten ? ' + calibration' : ''
+        }.`,
+      );
+    } finally {
+      setBusy(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const totalMinutes = Math.round(
@@ -146,6 +213,51 @@ export function Settings() {
             </span>
           )}
         </Card>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          Backup
+        </h2>
+        <Card>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">Export or import a backup</span>
+            <span className="text-xs text-text-dim">
+              JSON file · calibration + session history. No accounts, no cloud.
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onExport}
+              disabled={busy === 'export' || (calibration === null && sessions.length === 0)}
+              className="btn-ghost"
+            >
+              {busy === 'export' ? 'Exporting…' : 'Export'}
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy === 'import'}
+              className="btn-ghost"
+            >
+              {busy === 'import' ? 'Importing…' : 'Import'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void onImport(file);
+              }}
+            />
+          </div>
+        </Card>
+        {toast && (
+          <p className="text-xs text-text-dim font-mono text-center">{toast}</p>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">
