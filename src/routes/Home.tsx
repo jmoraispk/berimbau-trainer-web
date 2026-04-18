@@ -52,7 +52,27 @@ export function Home() {
   };
 
   return (
-    <main className="min-h-full flex flex-col items-center px-6 py-10 gap-8 max-w-2xl mx-auto">
+    <main className="relative min-h-full flex flex-col items-center px-6 py-10 gap-8 max-w-2xl mx-auto">
+      <Link
+        href="/settings"
+        aria-label="Settings"
+        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev border border-border text-text-dim hover:text-text"
+      >
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="w-4 h-4"
+          aria-hidden
+        >
+          <circle cx="10" cy="10" r="2.2" />
+          <path d="M10 3v2.2M10 14.8V17M3 10h2.2M14.8 10H17M5.2 5.2l1.6 1.6M13.2 13.2l1.6 1.6M5.2 14.8l1.6-1.6M13.2 6.8l1.6-1.6" />
+        </svg>
+      </Link>
+
       <header className="flex flex-col items-center gap-2">
         <img src="/icon.svg" alt="" className="w-16 h-16" />
         <h1 className="text-3xl font-semibold tracking-tight">Berimbau Trainer</h1>
