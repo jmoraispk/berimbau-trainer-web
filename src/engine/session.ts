@@ -87,6 +87,74 @@ export function totalDaysPracticed(sessions: SessionRecord[]): number {
   return days.size;
 }
 
+export interface HeatmapCell {
+  /** Local-calendar day key (YYYY-MM-DD). */
+  day: string;
+  /** Timestamp at local 00:00:00 on that day — useful for tooltips. */
+  timestamp: number;
+  /** Total active minutes practiced on this day. 0 when nothing happened. */
+  minutes: number;
+  /** Intensity in [0, 1] relative to the busiest day in the range. */
+  intensity: number;
+}
+
+export interface Heatmap {
+  /** Each column is a week (Sun–Sat), oldest first, 7 cells per column. */
+  weeks: HeatmapCell[][];
+  /** Right-most week's Sunday, for labeling. */
+  lastDay: number;
+}
+
+/**
+ * Weeks × days grid of practice intensity for a rolling window ending
+ * today. `weeks` param defaults to 26 (~6 months). The first column
+ * starts on a Sunday so the grid lines up with conventional calendars.
+ */
+export function buildHeatmap(
+  sessions: SessionRecord[],
+  now: number = Date.now(),
+  weeks = 26,
+): Heatmap {
+  // Aggregate active minutes per day up-front so the loop below is cheap.
+  const perDay = new Map<string, number>();
+  for (const s of sessions) {
+    const key = dayKey(s.endedAt);
+    perDay.set(key, (perDay.get(key) ?? 0) + s.elapsedSec / 60);
+  }
+  const maxMinutes = Math.max(1, ...Array.from(perDay.values()));
+
+  // End at the Saturday of the current week so the right-most column
+  // always has today visible somewhere in it.
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  const endDow = end.getDay(); // 0 Sun .. 6 Sat
+  const daysUntilSat = 6 - endDow;
+  end.setDate(end.getDate() + daysUntilSat);
+  // Start weeks*7 days earlier, floored to a Sunday.
+  const start = new Date(end);
+  start.setDate(start.getDate() - (weeks * 7 - 1));
+
+  const cols: HeatmapCell[][] = [];
+  const cursor = new Date(start);
+  for (let w = 0; w < weeks; w++) {
+    const col: HeatmapCell[] = [];
+    for (let d = 0; d < 7; d++) {
+      const key = dayKey(cursor.getTime());
+      const minutes = perDay.get(key) ?? 0;
+      col.push({
+        day: key,
+        timestamp: cursor.getTime(),
+        minutes,
+        intensity: minutes > 0 ? Math.min(1, minutes / maxMinutes) : 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    cols.push(col);
+  }
+
+  return { weeks: cols, lastDay: end.getTime() };
+}
+
 export interface ToqueStats {
   toqueName: ToqueName;
   sessionCount: number;

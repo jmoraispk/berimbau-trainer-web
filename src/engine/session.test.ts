@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildHeatmap,
   computeToqueStats,
   dayKey,
   streakDays,
@@ -84,6 +85,45 @@ describe('totalDaysPracticed', () => {
       rec(dayOffset(NOW, -3)),
     ];
     expect(totalDaysPracticed(sessions)).toBe(2);
+  });
+});
+
+describe('buildHeatmap', () => {
+  it('returns the requested number of week columns', () => {
+    const map = buildHeatmap([], NOW, 10);
+    expect(map.weeks).toHaveLength(10);
+    for (const w of map.weeks) expect(w).toHaveLength(7);
+  });
+
+  it('ends with the Saturday of the current week', () => {
+    const map = buildHeatmap([], NOW, 4);
+    const lastCol = map.weeks[map.weeks.length - 1]!;
+    const satCell = lastCol[6]!;
+    expect(new Date(satCell.timestamp).getDay()).toBe(6);
+  });
+
+  it('aggregates multiple sessions on the same day into the same cell', () => {
+    const sessions = [
+      { ...rec(NOW), elapsedSec: 600 },
+      { ...rec(NOW + 3_600_000), elapsedSec: 900 }, // same day, later
+    ];
+    const map = buildHeatmap(sessions, NOW, 4);
+    const todayKey = dayKey(NOW);
+    const cell = map.weeks.flat().find((c) => c.day === todayKey);
+    expect(cell?.minutes).toBeCloseTo(25, 1); // (600+900)/60
+    expect(cell?.intensity).toBe(1); // sole non-zero day
+  });
+
+  it('scales intensity relative to the busiest day', () => {
+    const sessions = [
+      { ...rec(dayOffset(NOW, -2)), elapsedSec: 1200 }, // 20 min
+      { ...rec(dayOffset(NOW, -1)), elapsedSec: 2400 }, // 40 min — max
+    ];
+    const map = buildHeatmap(sessions, NOW, 4);
+    const a = map.weeks.flat().find((c) => c.day === dayKey(dayOffset(NOW, -2)))!;
+    const b = map.weeks.flat().find((c) => c.day === dayKey(dayOffset(NOW, -1)))!;
+    expect(b.intensity).toBe(1);
+    expect(a.intensity).toBeCloseTo(0.5, 2);
   });
 });
 

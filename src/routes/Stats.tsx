@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
-import type { SessionRecord, ToqueStats } from '@/engine/session';
+import type { Heatmap, SessionRecord, ToqueStats } from '@/engine/session';
 import {
+  buildHeatmap,
   computeToqueStats,
   dayKey,
   streakDays,
@@ -34,6 +35,10 @@ export function Stats() {
 
   const toqueStats = useMemo(
     () => (sessions ? computeToqueStats(sessions) : []),
+    [sessions],
+  );
+  const heatmap = useMemo(
+    () => (sessions ? buildHeatmap(sessions) : null),
     [sessions],
   );
 
@@ -71,6 +76,7 @@ export function Stats() {
       ) : (
         <>
           <LifetimeCard sessions={sessions} />
+          {heatmap && <HeatmapCard heatmap={heatmap} />}
           {toqueStats.length > 0 && <ToqueCards stats={toqueStats} />}
           <SessionLog
             sessions={filtered}
@@ -147,6 +153,116 @@ function Stat({
       </span>
     </div>
   );
+}
+
+function HeatmapCard({ heatmap }: { heatmap: Heatmap }) {
+  const todayKey = dayKey(Date.now());
+  const flat = heatmap.weeks.flat();
+  const days = flat.filter((c) => c.minutes > 0).length;
+  const totalMinutes = Math.round(flat.reduce((a, c) => a + c.minutes, 0));
+  const legend = [0, 0.25, 0.5, 0.75, 1];
+
+  // Month labels above the grid: one label per first-week-of-month column.
+  const monthLabels: Array<{ col: number; label: string }> = [];
+  let lastMonth = -1;
+  heatmap.weeks.forEach((col, i) => {
+    const firstDay = col[0]!;
+    const m = new Date(firstDay.timestamp).getMonth();
+    if (m !== lastMonth) {
+      lastMonth = m;
+      monthLabels.push({
+        col: i,
+        label: new Date(firstDay.timestamp).toLocaleDateString(undefined, {
+          month: 'short',
+        }),
+      });
+    }
+  });
+
+  return (
+    <section className="card flex flex-col gap-3 p-4">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          Last {heatmap.weeks.length} weeks
+        </h2>
+        <span className="text-xs text-text-dim">
+          <span className="font-mono text-text">{days}</span> day
+          {days === 1 ? '' : 's'} ·{' '}
+          <span className="font-mono text-text">{totalMinutes}</span>m
+        </span>
+      </div>
+
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div
+          className="inline-grid gap-[3px] text-[9px]"
+          style={{
+            gridTemplateColumns: `repeat(${heatmap.weeks.length}, 11px)`,
+            gridTemplateRows: `12px repeat(7, 11px)`,
+          }}
+        >
+          {/* Month header row */}
+          {heatmap.weeks.map((_, col) => {
+            const label = monthLabels.find((m) => m.col === col)?.label;
+            return (
+              <div
+                key={`h-${col}`}
+                className="text-text-dim font-mono leading-none"
+                style={{ gridColumn: col + 1, gridRow: 1 }}
+              >
+                {label ?? ''}
+              </div>
+            );
+          })}
+          {/* Cells */}
+          {heatmap.weeks.map((col, cIdx) =>
+            col.map((cell, dIdx) => {
+              const isToday = cell.day === todayKey;
+              const isFuture = cell.timestamp > Date.now();
+              return (
+                <div
+                  key={`${cIdx}-${dIdx}`}
+                  className={`rounded-[2px] ${isToday ? 'ring-1 ring-accent' : ''}`}
+                  style={{
+                    gridColumn: cIdx + 1,
+                    gridRow: dIdx + 2,
+                    background: isFuture ? 'transparent' : intensityColor(cell.intensity),
+                    opacity: isFuture ? 0.15 : 1,
+                  }}
+                  title={`${new Date(cell.timestamp).toLocaleDateString()} · ${
+                    cell.minutes > 0 ? `${cell.minutes.toFixed(0)} min` : 'no practice'
+                  }`}
+                />
+              );
+            }),
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 text-[10px] text-text-dim self-end">
+        <span>less</span>
+        <div className="flex gap-[3px]">
+          {legend.map((v) => (
+            <div
+              key={v}
+              className="w-[11px] h-[11px] rounded-[2px]"
+              style={{ background: intensityColor(v) }}
+            />
+          ))}
+        </div>
+        <span>more</span>
+      </div>
+    </section>
+  );
+}
+
+function intensityColor(intensity: number): string {
+  if (intensity <= 0) return '#1a2135';
+  // 4-stop ramp from a dim-cool base to a warm accent — matches the app's
+  // navy→orange palette without introducing a new hue.
+  if (intensity < 0.25) return '#2a3556';
+  if (intensity < 0.5) return '#634d5b';
+  if (intensity < 0.8) return '#c06d3e';
+  return '#ff8a3d';
 }
 
 function ToqueCards({ stats }: { stats: ToqueStats[] }) {
