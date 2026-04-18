@@ -16,6 +16,7 @@ import {
   type DetectedNote,
   type Outcome,
 } from '@/engine/scoring';
+import { saveSession } from '@/storage/sessions-store';
 
 /**
  * Practice screen — rhythm timeline + mic scoring.
@@ -70,9 +71,11 @@ export function Practice() {
   const lastDetectedTsRef = useRef(-Infinity);
   const pausedRef = useRef(false);
 
-  // Session timing. We track active (unpaused) seconds so the summary
-  // reports real play time, not wall-clock-since-start.
+  // Session timing. We track active (unpaused) seconds (via the audio
+  // clock) so the summary reports real play time, AND the wall-clock
+  // start time so history records can be ordered and shown as dates.
   const sessionStartRef = useRef(0);
+  const sessionStartWallRef = useRef(0);
   const pausedDurationRef = useRef(0);
   const pauseStartedAtRef = useRef<number | null>(null);
 
@@ -123,6 +126,7 @@ export function Practice() {
     outcomesRef.current = new Map();
     lastDetectedTsRef.current = now;
     sessionStartRef.current = now;
+    sessionStartWallRef.current = Date.now();
     pausedDurationRef.current = 0;
     pauseStartedAtRef.current = null;
     schedulerRef.current = new ToqueScheduler({
@@ -136,10 +140,31 @@ export function Practice() {
   }, [toque, bpm]);
 
   const endSession = useCallback(() => {
-    void inputRef.current?.stop();
+    const input = inputRef.current;
+    const now = input ? input.now() : performance.now() / 1000;
+    const scoring = scoringRef.current;
+    const built = buildSummary(scoring, elapsedActive(now));
+
+    // Only persist if there's something worth recording — anything less
+    // would clutter the history with accidental taps of 'End session'.
+    if (built.totalScoredBeats > 0 && sessionStartWallRef.current > 0) {
+      void saveSession({
+        startedAt: sessionStartWallRef.current,
+        endedAt: Date.now(),
+        toqueName: toque.name,
+        bpm,
+        elapsedSec: built.elapsedSec,
+        accuracy: built.accuracy,
+        totalScoredBeats: built.totalScoredBeats,
+        bestStreak: built.bestStreak,
+        outcomeCounts: built.outcomeCounts,
+        perSound: built.perSound,
+      });
+    }
+    void input?.stop();
     inputRef.current = null;
     navigate('/');
-  }, [navigate]);
+  }, [navigate, toque, bpm]);
 
   const elapsedActive = (now: number): number => {
     if (!sessionStartRef.current) return 0;
@@ -330,6 +355,7 @@ export function Practice() {
       outcomesRef.current = new Map();
       lastDetectedTsRef.current = now;
       sessionStartRef.current = now;
+      sessionStartWallRef.current = Date.now();
       pausedDurationRef.current = 0;
       pauseStartedAtRef.current = null;
       pausedRef.current = false;

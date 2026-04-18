@@ -10,6 +10,9 @@ import {
 } from '@/engine/rhythms';
 import { preloadActiveProfiles } from '@/audio/active-profiles';
 import type { SavedCalibration } from '@/engine/calibration';
+import { listRecentSessions } from '@/storage/sessions-store';
+import type { SessionRecord } from '@/engine/session';
+import { streakDays } from '@/engine/session';
 
 const SOUNDS: Sound[] = ['dong', 'ch', 'ding'];
 const TOQUE_NAMES = Object.keys(TOQUES) as ToqueName[];
@@ -20,11 +23,15 @@ export function Home() {
   const toque = TOQUES[toqueName];
   const [bpm, setBpm] = useState(toque.defaultBpm);
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     void preloadActiveProfiles().then((saved) => {
       if (!cancelled) setCalibration(saved);
+    });
+    void listRecentSessions(5).then((list) => {
+      if (!cancelled) setSessions(list);
     });
     return () => {
       cancelled = true;
@@ -129,6 +136,8 @@ export function Home() {
 
       <CalibrationCard calibration={calibration} />
 
+      <RecentSessionsCard sessions={sessions} />
+
       <div className="flex flex-col items-center gap-3 w-full">
         <button
           type="button"
@@ -177,6 +186,65 @@ function CalibrationCard({ calibration }: { calibration: SavedCalibration | null
 
 function totalSamples(c: SavedCalibration): number {
   return c.sampleCount.dong + c.sampleCount.ch + c.sampleCount.ding;
+}
+
+function RecentSessionsCard({ sessions }: { sessions: SessionRecord[] }) {
+  if (sessions.length === 0) return null;
+  const streak = streakDays(sessions);
+  const averageAccuracy =
+    sessions.reduce((s, r) => s + r.accuracy, 0) / sessions.length;
+
+  return (
+    <section className="w-full flex flex-col gap-3 px-4 py-3 rounded-xl bg-bg-elev border border-border">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-medium text-text-dim tracking-wider uppercase">
+          Recent sessions
+        </h2>
+        <div className="flex items-center gap-3 text-xs text-text-dim">
+          {streak > 0 && (
+            <span>
+              <span className="text-accent font-mono">{streak}</span>-day streak
+            </span>
+          )}
+          <span>
+            avg{' '}
+            <span className="font-mono text-text">
+              {Math.round(averageAccuracy * 100)}%
+            </span>
+          </span>
+        </div>
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {sessions.map((s, i) => (
+          <SessionRow key={s.id ?? i} session={s} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SessionRow({ session }: { session: SessionRecord }) {
+  const mins = Math.max(1, Math.round(session.elapsedSec / 60));
+  return (
+    <li className="flex items-center gap-3 text-xs">
+      <span className="text-text-dim w-20 shrink-0 font-mono">
+        {formatRelative(session.endedAt)}
+      </span>
+      <span className="flex-1 truncate text-text">{session.toqueName}</span>
+      <span className="font-mono text-text-dim">{session.bpm} bpm</span>
+      <span className="font-mono text-text-dim w-10 text-right">{mins}m</span>
+      <AccuracyPill accuracy={session.accuracy} />
+    </li>
+  );
+}
+
+function AccuracyPill({ accuracy }: { accuracy: number }) {
+  const pct = Math.round(accuracy * 100);
+  const color =
+    pct >= 80 ? 'text-[#64f08c]' : pct >= 60 ? 'text-[#a7e87a]' : pct >= 40 ? 'text-[#f2b640]' : 'text-[#e2506c]';
+  return (
+    <span className={`font-mono w-11 text-right ${color}`}>{pct}%</span>
+  );
 }
 
 function formatRelative(ts: number): string {
