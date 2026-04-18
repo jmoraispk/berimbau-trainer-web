@@ -126,9 +126,45 @@ export function Practice() {
     setStatus('running');
   }, [toque]);
 
+  // Persist the current session if there's anything worth recording.
+  // Idempotent via sessionSavedRef so visibilitychange / beforeunload /
+  // explicit end-session don't produce duplicates.
+  const sessionSavedRef = useRef(false);
+  const persistSession = useCallback(() => {
+    if (sessionSavedRef.current) return;
+    if (sessionStartWallRef.current <= 0) return;
+    const input = inputRef.current;
+    const now = input ? input.now() : performance.now() / 1000;
+    const built = buildSummary(scoringRef.current, elapsedActive(now));
+    if (built.totalScoredBeats === 0) return;
+    sessionSavedRef.current = true;
+    void saveSession({
+      startedAt: sessionStartWallRef.current,
+      endedAt: Date.now(),
+      toqueName: toque.name,
+      bpm: bpmRef.current,
+      elapsedSec: built.elapsedSec,
+      accuracy: built.accuracy,
+      totalScoredBeats: built.totalScoredBeats,
+      bestStreak: built.bestStreak,
+      outcomeCounts: built.outcomeCounts,
+      perSound: built.perSound,
+    });
+  }, [toque]);
+
+  const endSession = useCallback(() => {
+    persistSession();
+    void inputRef.current?.stop();
+    inputRef.current = null;
+    navigate('/');
+  }, [navigate, persistSession]);
+
   const restartNow = useCallback(() => {
     const input = inputRef.current;
     if (!input) return;
+    // Persist the finished-up-to-now run before clearing state so a
+    // restart still counts as a completed session.
+    persistSession();
     const now = input.now();
     scoringRef.current.reset();
     registeredBeatsRef.current = new Set();
@@ -138,6 +174,7 @@ export function Practice() {
     sessionStartWallRef.current = Date.now();
     pausedDurationRef.current = 0;
     pauseStartedAtRef.current = null;
+    sessionSavedRef.current = false;
     schedulerRef.current = new ToqueScheduler({
       toque,
       bpm: bpmRef.current,
@@ -146,34 +183,7 @@ export function Practice() {
     pausedRef.current = false;
     setSummary(null);
     setStatus('running');
-  }, [toque]);
-
-  const endSession = useCallback(() => {
-    const input = inputRef.current;
-    const now = input ? input.now() : performance.now() / 1000;
-    const scoring = scoringRef.current;
-    const built = buildSummary(scoring, elapsedActive(now));
-
-    // Only persist if there's something worth recording — anything less
-    // would clutter the history with accidental taps of 'End session'.
-    if (built.totalScoredBeats > 0 && sessionStartWallRef.current > 0) {
-      void saveSession({
-        startedAt: sessionStartWallRef.current,
-        endedAt: Date.now(),
-        toqueName: toque.name,
-        bpm: bpmRef.current,
-        elapsedSec: built.elapsedSec,
-        accuracy: built.accuracy,
-        totalScoredBeats: built.totalScoredBeats,
-        bestStreak: built.bestStreak,
-        outcomeCounts: built.outcomeCounts,
-        perSound: built.perSound,
-      });
-    }
-    void input?.stop();
-    inputRef.current = null;
-    navigate('/');
-  }, [navigate, toque]);
+  }, [toque, persistSession]);
 
   const changeBpm = useCallback((delta: number) => {
     const next = clampBpm(toque, bpmRef.current + delta);
@@ -397,10 +407,29 @@ export function Practice() {
 
   useEffect(() => {
     return () => {
+      persistSession();
       void inputRef.current?.stop();
       inputRef.current = null;
     };
-  }, []);
+  }, [persistSession]);
+
+  // Best-effort autosave when the tab is hidden or about to unload. Both
+  // fire synchronously; saveSession is fire-and-forget so we can't await,
+  // but IDB will usually commit before the page actually tears down.
+  useEffect(() => {
+    const flush = () => persistSession();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, [persistSession]);
 
   const beginSession = (input: AudioInput) => {
     inputRef.current = input;
@@ -414,6 +443,7 @@ export function Practice() {
     pausedDurationRef.current = 0;
     pauseStartedAtRef.current = null;
     pausedRef.current = false;
+    sessionSavedRef.current = false;
     bpmRef.current = initialBpm;
     setBpm(initialBpm);
     schedulerRef.current = new ToqueScheduler({
