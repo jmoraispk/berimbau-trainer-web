@@ -37,6 +37,14 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(projectRoot, 'src') },
   },
+  server: {
+    // Bind to all interfaces so LAN / Tailscale can reach the dev server.
+    host: true,
+    // Vite 8 rejects unknown Host headers in dev. Tailscale Serve forwards
+    // requests with the *.ts.net hostname; allow any host so dev-mode
+    // testing on the phone (via tailscale serve) just works.
+    allowedHosts: true,
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
