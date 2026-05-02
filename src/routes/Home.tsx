@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import {
   DIFFICULTY_LABELS,
-  GLOBAL_BPM_RANGE,
   SOUND_LABELS,
   TOQUES,
   toquesByDifficulty,
@@ -16,13 +15,12 @@ import { listRecentSessions } from '@/storage/sessions-store';
 import type { SessionRecord } from '@/engine/session';
 import { streakDays } from '@/engine/session';
 
-const SOUNDS: Sound[] = ['dong', 'ch', 'ding'];
+const SOUNDS: Sound[] = ['ch', 'dong', 'ding'];
 
 export function Home() {
   const [, navigate] = useLocation();
   const [toqueName, setToqueName] = useState<ToqueName>('Angola');
   const toque = TOQUES[toqueName];
-  const [bpm, setBpm] = useState(toque.defaultBpm);
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
 
@@ -41,7 +39,6 @@ export function Home() {
 
   const onPickToque = (name: ToqueName) => {
     setToqueName(name);
-    setBpm(TOQUES[name].defaultBpm);
   };
 
   const groups = useMemo(() => toquesByDifficulty(), []);
@@ -52,12 +49,15 @@ export function Home() {
 
   const start = () => {
     if (toque.comingSoon) return;
-    const params = new URLSearchParams({ toque: toqueName, bpm: String(bpm) });
+    const params = new URLSearchParams({
+      toque: toqueName,
+      bpm: String(toque.defaultBpm),
+    });
     navigate(`/practice?${params.toString()}`);
   };
 
   return (
-    <main className="relative min-h-full flex flex-col items-center px-6 pt-12 pb-14 gap-8 max-w-2xl mx-auto">
+    <main className="relative min-h-full flex flex-col items-center px-6 pt-12 pb-14 gap-8 max-w-3xl mx-auto">
       <Link
         href="/settings"
         aria-label="Settings"
@@ -104,9 +104,9 @@ export function Home() {
         ))}
       </section>
 
-      <section className="w-full flex flex-col gap-3">
-        <SectionLabel>Toque</SectionLabel>
-        <div className="flex flex-col gap-3">
+      <section className="w-full flex flex-col md:flex-row gap-6 items-stretch">
+        <div className="flex-1 flex flex-col gap-3 min-w-0">
+          <SectionLabel>Toque</SectionLabel>
           {groups.map((group) => (
             <div key={group.difficulty} className="flex flex-col gap-1.5">
               <span className="text-[10px] font-mono text-text-dim/70 tracking-[0.18em] uppercase">
@@ -143,57 +143,38 @@ export function Home() {
             </div>
           ))}
         </div>
-      </section>
 
-      <section className="w-full flex flex-col gap-2">
-        <div className="flex items-baseline justify-between">
-          <SectionLabel>Tempo</SectionLabel>
-          <span className="font-mono text-sm text-text">
-            <span className="text-base">{bpm}</span> <span className="text-text-dim text-xs">bpm</span>
-          </span>
-        </div>
-        <input
-          type="range"
-          min={GLOBAL_BPM_RANGE[0]}
-          max={GLOBAL_BPM_RANGE[1]}
-          step={1}
-          value={bpm}
-          onChange={(e) => setBpm(Number(e.target.value))}
-          className="w-full accent-accent"
-        />
-        <div className="flex justify-between text-[10px] text-text-dim font-mono">
-          <span>{GLOBAL_BPM_RANGE[0]}</span>
+        <div className="flex flex-col gap-3 md:w-60 md:shrink-0">
           <button
             type="button"
-            onClick={() => setBpm(toque.defaultBpm)}
-            className="hover:text-text transition"
+            onClick={start}
+            disabled={toque.comingSoon}
+            className="btn-primary py-4 w-full text-base"
           >
-            default {toque.defaultBpm}
+            Start practicing
           </button>
-          <span>{GLOBAL_BPM_RANGE[1]}</span>
+          <Link
+            href="/calibrate"
+            className="btn-secondary py-4 w-full text-base flex flex-col items-center gap-0"
+          >
+            <span>{calibration ? 'Recalibrate' : 'Calibrate'}</span>
+            {calibration && (
+              <span className="text-[10px] text-text-dim font-mono">
+                {totalSamples(calibration)} samples · saved {formatRelative(calibration.savedAt)}
+              </span>
+            )}
+          </Link>
         </div>
       </section>
-
-      <CalibrationCard calibration={calibration} />
 
       <RecentSessionsCard sessions={sessions} />
 
-      <div className="flex flex-col items-center gap-3 w-full pt-2">
-        <button
-          type="button"
-          onClick={start}
-          disabled={toque.comingSoon}
-          className="btn-primary px-10 py-3"
-        >
-          Start practicing
-        </button>
-        <Link
-          href="/songs"
-          className="text-sm text-text-dim underline underline-offset-4 hover:text-text"
-        >
-          Browse 185 songs
-        </Link>
-      </div>
+      <Link
+        href="/songs"
+        className="text-sm text-text-dim underline underline-offset-4 hover:text-text"
+      >
+        Browse 185 songs
+      </Link>
 
       <footer className="text-text-dim text-[10px] font-mono tracking-wider mt-auto">
         {totalToques} toques · v2 · web
@@ -207,26 +188,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
       {children}
     </h2>
-  );
-}
-
-function CalibrationCard({ calibration }: { calibration: SavedCalibration | null }) {
-  return (
-    <section className="card w-full flex items-center justify-between gap-4 px-4 py-3">
-      <div className="flex flex-col min-w-0">
-        <span className="text-sm font-medium">
-          {calibration ? 'Using your calibration' : 'Using default profile'}
-        </span>
-        <span className="text-xs text-text-dim truncate">
-          {calibration
-            ? `Saved ${formatRelative(calibration.savedAt)} · ${totalSamples(calibration)} samples`
-            : 'Calibrate for best accuracy on your berimbau.'}
-        </span>
-      </div>
-      <Link href="/calibrate" className="btn-ghost shrink-0">
-        {calibration ? 'Recalibrate' : 'Calibrate'}
-      </Link>
-    </section>
   );
 }
 

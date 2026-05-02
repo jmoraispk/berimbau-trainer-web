@@ -4,6 +4,7 @@ import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
 import { Metronome } from '@/audio/Metronome';
 import { PatternPreview } from '@/components/PatternPreview';
+import { SoundSymbol as SoundSymbolImported } from '@/components/SoundSymbol';
 import {
   GLOBAL_BPM_RANGE,
   SOUND_COLORS,
@@ -131,12 +132,10 @@ export function Practice() {
   // circular (rotating clock face, default portrait). The render loop
   // reads the ref so toggling doesn't trigger a re-render.
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
-    if (typeof localStorage === 'undefined') return 'linear';
+    if (typeof localStorage === 'undefined') return 'circular';
     const stored = localStorage.getItem(DISPLAY_PREF_KEY);
     if (stored === 'linear' || stored === 'circular') return stored;
-    return typeof window !== 'undefined' && window.innerWidth < window.innerHeight
-      ? 'circular'
-      : 'linear';
+    return 'circular'; // default for both portrait and landscape
   });
   const displayModeRef = useRef<DisplayMode>(displayMode);
   useEffect(() => {
@@ -306,22 +305,8 @@ export function Practice() {
     ro.observe(canvas);
 
     let raf = 0;
-    let lastT = performance.now();
-    let frames = 0;
-    let fps = 0;
-    let fpsAccum = 0;
 
-    const draw = (t: number) => {
-      const dt = t - lastT;
-      lastT = t;
-      frames += 1;
-      fpsAccum += dt;
-      if (fpsAccum >= 500) {
-        fps = Math.round((frames * 1000) / fpsAccum);
-        frames = 0;
-        fpsAccum = 0;
-      }
-
+    const draw = (_t: number) => {
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
 
@@ -413,15 +398,7 @@ export function Practice() {
         }
       }
 
-      drawHUD(
-        ctx,
-        scoring,
-        fps,
-        w,
-        pausedRef.current,
-        bpmRef.current,
-        performance.now() / 1000 < bpmFlashUntilRef.current,
-      );
+      drawHUD(ctx, scoring, w, h, pausedRef.current, displayModeRef.current);
 
       raf = requestAnimationFrame(draw);
     };
@@ -702,6 +679,8 @@ export function Practice() {
         />
       )}
 
+      {(status === 'running' || status === 'paused') && <Legend />}
+
       {status === 'paused' && summary && (
         <SummaryOverlay
           summary={summary}
@@ -711,6 +690,30 @@ export function Practice() {
         />
       )}
     </main>
+  );
+}
+
+/**
+ * Legend chip in the bottom-right of the practice canvas. Three rows mapping
+ * each glyph to its label so the user can recall what × / ○ / ● mean
+ * without leaving the screen.
+ */
+function Legend() {
+  return (
+    <div className="absolute bottom-4 right-4 hidden sm:flex flex-col gap-1.5 px-3 py-2 rounded-xl bg-bg-elev/70 backdrop-blur border border-border text-[11px] text-text-dim font-mono pointer-events-none">
+      <LegendRow sound="ch" label="TCH" />
+      <LegendRow sound="dong" label="DONG" />
+      <LegendRow sound="ding" label="DING" />
+    </div>
+  );
+}
+
+function LegendRow({ sound, label }: { sound: Sound; label: string }) {
+  return (
+    <div className="flex items-center gap-2 leading-none">
+      <SoundSymbolImported sound={sound} size={14} glow={false} />
+      <span>{label}</span>
+    </div>
   );
 }
 
@@ -1081,7 +1084,9 @@ function drawTarget(
   outcome: (BeatResult & { at: number }) | undefined,
 ) {
   const color = SOUND_COLORS[beat.sound];
-  const r = beat.accent ? 18 : 14;
+  // Constant size — accent still drives metronome pitch but shouldn't make
+  // the offbeat tch in a tch_tch pair look smaller than the downbeat one.
+  const r = 16;
   const now = performance.now() / 1000;
 
   if (outcome) {
@@ -1210,14 +1215,22 @@ function drawGo(ctx: CanvasRenderingContext2D, w: number, h: number, untilStart:
   ctx.restore();
 }
 
+/**
+ * HUD layout (no FPS, no duplicated BPM):
+ *
+ *   - Circular mode: accuracy % is centered inside the ring; outcome bar
+ *     sits at the bottom-left.
+ *   - Linear mode:   accuracy + caption + outcome bar all stacked at
+ *     bottom-left.
+ *   - PAUSED tag (when paused) flashes top-right just below the toolbar.
+ */
 function drawHUD(
   ctx: CanvasRenderingContext2D,
   scoring: ScoringEngine,
-  fps: number,
   w: number,
+  h: number,
   paused: boolean,
-  bpm: number,
-  bpmFlash: boolean,
+  displayMode: DisplayMode,
 ) {
   const accuracy = scoring.rollingAccuracy(20);
   const recent = scoring.beatResults.slice(-30);
@@ -1232,33 +1245,36 @@ function drawHUD(
   };
   for (const r of recent) counts[r.outcome]++;
 
-  ctx.fillStyle = '#8a93b0';
-  ctx.font = '12px ui-monospace, Consolas, monospace';
-  ctx.textAlign = 'right';
-  ctx.fillText(`fps ${fps}`, w - 16, 56);
   if (paused) {
+    ctx.textAlign = 'right';
     ctx.fillStyle = '#ff8a3d';
-    ctx.fillText('PAUSED', w - 16, 36);
+    ctx.font = 'bold 11px ui-monospace, Consolas, monospace';
+    ctx.fillText('PAUSED', w - 16, h - 16);
+    ctx.textAlign = 'start';
   }
-  // Large BPM readout on the right — flashes orange briefly when the user
-  // bumps the tempo so the change registers in peripheral vision.
-  ctx.fillStyle = bpmFlash ? '#ff8a3d' : '#e6e8f0';
-  ctx.font = 'bold 24px ui-monospace, Consolas, monospace';
-  ctx.fillText(`${bpm}`, w - 16, 100);
-  ctx.fillStyle = '#8a93b0';
-  ctx.font = '10px ui-monospace, Consolas, monospace';
-  ctx.fillText('bpm', w - 16, 116);
-  ctx.textAlign = 'start';
 
-  ctx.fillStyle = '#e6e8f0';
-  ctx.font = 'bold 28px ui-monospace, Consolas, monospace';
-  ctx.fillText(`${Math.round(accuracy * 100)}%`, 16, 40);
-  ctx.font = '11px ui-monospace, Consolas, monospace';
-  ctx.fillStyle = '#8a93b0';
-  ctx.fillText('accuracy (last 20)', 16, 56);
+  // Accuracy readout — centered in circular mode, bottom-left in linear.
+  if (displayMode === 'circular') {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#e6e8f0';
+    ctx.font = 'bold 36px ui-monospace, Consolas, monospace';
+    ctx.fillText(`${Math.round(accuracy * 100)}%`, w / 2, h / 2);
+    ctx.font = '10px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = '#8a93b0';
+    ctx.fillText('accuracy', w / 2, h / 2 + 24);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+  } else {
+    ctx.fillStyle = '#e6e8f0';
+    ctx.font = 'bold 28px ui-monospace, Consolas, monospace';
+    ctx.fillText(`${Math.round(accuracy * 100)}%`, 16, h - 56);
+    ctx.font = '11px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = '#8a93b0';
+    ctx.fillText('accuracy (last 20)', 16, h - 40);
+  }
 
-  // Compact one-letter labels — late_correct / late_wrong share L so we
-  // disambiguate with a sign suffix.
+  // Outcome bar — bottom-left, same in both modes.
   const hudLabels: Record<Outcome, string> = {
     perfect: 'P',
     good: 'G',
@@ -1269,14 +1285,14 @@ function drawHUD(
     mistake: '!',
   };
   let x = 16;
-  const y = 76;
+  const barY = h - 24;
   ctx.font = '10px ui-monospace, Consolas, monospace';
   for (const key of OUTCOME_ORDER) {
     const n = counts[key];
     ctx.fillStyle = n === 0 ? '#2a3048' : OUTCOME_COLORS[key];
-    ctx.fillRect(x, y, 18, 4);
+    ctx.fillRect(x, barY, 18, 4);
     ctx.fillStyle = '#8a93b0';
-    ctx.fillText(`${hudLabels[key]}${n > 0 ? n : ''}`, x, y + 18);
+    ctx.fillText(`${hudLabels[key]}${n > 0 ? n : ''}`, x, barY + 14);
     x += 30;
   }
 }

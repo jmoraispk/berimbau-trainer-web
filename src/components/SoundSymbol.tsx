@@ -8,12 +8,23 @@ import { SOUND_COLORS, type Sound } from '@/engine/rhythms';
  *   ○  DONG — open string
  *   ●  DING — closed string ("painted in the middle")
  */
-export function SoundSymbol({ sound, size = 32 }: { sound: Sound; size?: number }) {
+export function SoundSymbol({
+  sound,
+  size = 32,
+  glow = true,
+}: {
+  sound: Sound;
+  size?: number;
+  /** Disable the soft drop-shadow halo. Useful in tight contexts (e.g. the
+   *  paired-tch cell in PatternPreview) where two glows would overlap. */
+  glow?: boolean;
+}) {
   const color = SOUND_COLORS[sound];
   const stroke = Math.max(2, size * 0.16);
   const r = size * 0.42;
   const c = size / 2;
-  const filter = `drop-shadow(0 0 ${size * 0.6}px ${color}55)`;
+  // Tighter, less invasive halo — was 0.6 * size.
+  const filter = glow ? `drop-shadow(0 0 ${size * 0.3}px ${color}55)` : 'none';
 
   if (sound === 'ch') {
     const k = r * 0.78;

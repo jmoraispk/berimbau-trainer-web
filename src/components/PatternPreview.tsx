@@ -86,8 +86,8 @@ function PatternCell({
       <div
         className={`aspect-square rounded-md bg-bg flex items-center justify-center gap-1 border border-border ${ringClass}`}
       >
-        <SoundSymbol sound="ch" size={tchSymbolSize} />
-        <SoundSymbol sound="ch" size={tchSymbolSize} />
+        <SoundSymbol sound="ch" size={tchSymbolSize} glow={false} />
+        <SoundSymbol sound="ch" size={tchSymbolSize} glow={false} />
       </div>
     );
   }
