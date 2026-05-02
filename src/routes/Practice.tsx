@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from 'wouter';
 import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
 import { Metronome } from '@/audio/Metronome';
+import { PatternPreview } from '@/components/PatternPreview';
 import {
   GLOBAL_BPM_RANGE,
   SOUND_COLORS,
@@ -84,6 +85,8 @@ type Status = 'idle' | 'starting' | 'running' | 'paused' | 'error';
 const BPM_STEP = 5;
 const METRONOME_LOOKAHEAD_SEC = 0.25;
 const METRONOME_PREF_KEY = 'berimbau:metronome';
+const DISPLAY_PREF_KEY = 'berimbau:display';
+type DisplayMode = 'linear' | 'circular';
 
 export function Practice() {
   const search = useSearch();
@@ -123,6 +126,33 @@ export function Practice() {
     if (typeof localStorage === 'undefined') return false;
     return localStorage.getItem(METRONOME_PREF_KEY) === '1';
   });
+
+  // Display mode: linear (sweeping right→left, default landscape) vs
+  // circular (rotating clock face, default portrait). The render loop
+  // reads the ref so toggling doesn't trigger a re-render.
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
+    if (typeof localStorage === 'undefined') return 'linear';
+    const stored = localStorage.getItem(DISPLAY_PREF_KEY);
+    if (stored === 'linear' || stored === 'circular') return stored;
+    return typeof window !== 'undefined' && window.innerWidth < window.innerHeight
+      ? 'circular'
+      : 'linear';
+  });
+  const displayModeRef = useRef<DisplayMode>(displayMode);
+  useEffect(() => {
+    displayModeRef.current = displayMode;
+  }, [displayMode]);
+  const toggleDisplayMode = useCallback(() => {
+    setDisplayMode((prev) => {
+      const next: DisplayMode = prev === 'linear' ? 'circular' : 'linear';
+      try {
+        localStorage.setItem(DISPLAY_PREF_KEY, next);
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
   // Snapshot of stats shown in the paused summary overlay — re-read each
   // time we pause so React doesn't need to mirror the scoring engine live.
   const [summary, setSummary] = useState<SessionSummary | null>(null);
@@ -294,50 +324,24 @@ export function Practice() {
 
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
-      const hitX = Math.round(w * 0.25);
-      const pxPerSec = (w - hitX) / LEAD_SECONDS;
 
       ctx.fillStyle = '#0b0f1a';
       ctx.fillRect(0, 0, w, h);
 
       const scoring = scoringRef.current;
-      const toleranceW = 0.08 * pxPerSec;
-      ctx.fillStyle = 'rgba(255,138,61,0.08)';
-      ctx.fillRect(hitX - toleranceW, 0, toleranceW * 2, h);
-      ctx.strokeStyle = '#ff8a3d';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(hitX, 0);
-      ctx.lineTo(hitX, h);
-      ctx.stroke();
-
-      const laneY = (sound: Sound) => {
-        if (sound === 'dong') return h * 0.72;
-        if (sound === 'ding') return h * 0.28;
-        return h * 0.5;
-      };
-      ctx.strokeStyle = '#141a2a';
-      ctx.lineWidth = 1;
-      for (const s of ['dong', 'ch', 'ding'] as const) {
-        const y = laneY(s);
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-      }
-
       const input = inputRef.current;
       const now = input ? input.now() : performance.now() / 1000;
-      // When paused we freeze the virtual clock used by the renderer so
-      // beats don't drift off-screen while the user is reading the summary.
+      // When paused, freeze the virtual clock used by the renderer so beats
+      // don't drift off-screen while the user is reading the summary.
       const renderNow = pausedRef.current && pauseStartedAtRef.current != null
         ? pauseStartedAtRef.current
         : now;
 
+      // ── Engine work (mode-independent): register target beats, schedule
+      //    metronome ticks, consume detected notes, flush misses. ──────────
       const scheduler = schedulerRef.current;
       if (scheduler) {
         const beats = scheduler.beatsInWindow(renderNow - 0.3, renderNow + LEAD_SECONDS);
-
         const metronome = metronomeRef.current;
         for (const beat of beats) {
           if (
@@ -348,9 +352,6 @@ export function Practice() {
             scoring.registerTargetBeat(beat.step, beat.sound, beat.beatTime, renderNow);
             registeredBeatsRef.current.add(beat.id);
           }
-          // Metronome look-ahead — schedule each tick ~250ms before its beat
-          // so the audio scheduler has plenty of headroom; the context plays
-          // it sample-accurately at beat.beatTime regardless of frame jitter.
           if (
             !pausedRef.current &&
             metronome &&
@@ -360,10 +361,6 @@ export function Practice() {
             metronome.scheduleTick(beat.beatTime, beat.accent);
             tickedBeatsRef.current.add(beat.id);
           }
-          const x = hitX + (beat.beatTime - renderNow) * pxPerSec;
-          if (x < -40 || x > w + 40) continue;
-          const outcome = outcomesRef.current.get(beat.id);
-          drawTarget(ctx, beat, x, laneY(beat.sound), outcome);
         }
 
         if (!pausedRef.current) {
@@ -393,12 +390,15 @@ export function Practice() {
         }
       }
 
-      const notes = audioBus.recentNotes;
-      for (let i = notes.length - 1; i >= 0; i--) {
-        const note = notes[i]!;
-        const x = hitX + (note.timestamp - renderNow) * pxPerSec;
-        if (x < -40 || x > w + 40) continue;
-        drawDetectedNote(ctx, note, x, laneY(note.soundClass === 'unknown' ? 'ch' : (note.soundClass as Sound)));
+      // ── Paint (mode-specific) ──────────────────────────────────────────
+      if (displayModeRef.current === 'circular' && scheduler) {
+        paintCircular(ctx, w, h, scheduler, renderNow, outcomesRef.current, firstBeatAtRef.current);
+      } else if (scheduler) {
+        paintLinear(ctx, w, h, scheduler, renderNow, outcomesRef.current);
+      } else {
+        // No scheduler yet (idle / starting). Just paint the linear hit line
+        // so the screen isn't blank.
+        paintLinear(ctx, w, h, null, renderNow, outcomesRef.current);
       }
 
       // Count-in overlay — visible when the first beat is still more
@@ -609,6 +609,15 @@ export function Practice() {
       </div>
 
       <div className="absolute top-4 right-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={toggleDisplayMode}
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border border-border text-text-dim hover:text-text transition"
+          title={`Switch to ${displayMode === 'circular' ? 'linear' : 'circular'} layout`}
+          aria-label={`Switch to ${displayMode === 'circular' ? 'linear' : 'circular'} layout`}
+        >
+          <DisplayModeIcon mode={displayMode} />
+        </button>
         {(status === 'running' || status === 'paused') && (
           <button
             type="button"
@@ -656,9 +665,9 @@ export function Practice() {
                 <h2 className="text-xl font-semibold">Ready?</h2>
                 <p className="text-text-dim text-sm text-center">
                   Playing <span className="text-text">{toque.name}</span> at{' '}
-                  <span className="font-mono">{bpm} bpm</span>. Start the mic to
-                  play along, or use the keyboard to try without an instrument.
+                  <span className="font-mono">{bpm} bpm</span>.
                 </p>
+                <PatternPreview toque={toque} cellSize="compact" />
                 <div className="flex flex-col items-stretch gap-2 w-full">
                   <button
                     type="button"
@@ -702,6 +711,42 @@ export function Practice() {
         />
       )}
     </main>
+  );
+}
+
+/** Toggle icon: shows the layout the user would switch *to*. */
+function DisplayModeIcon({ mode }: { mode: DisplayMode }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-4 h-4"
+      aria-hidden
+    >
+      {mode === 'circular' ? (
+        // currently circular → icon previews linear
+        <>
+          <line x1="3" y1="10" x2="17" y2="10" />
+          <circle cx="6" cy="10" r="1.5" fill="currentColor" />
+          <circle cx="11" cy="10" r="1.5" fill="currentColor" />
+          <circle cx="15.5" cy="10" r="1.5" fill="currentColor" />
+        </>
+      ) : (
+        // currently linear → icon previews circular
+        <>
+          <circle cx="10" cy="10" r="6.5" />
+          <line x1="10" y1="10" x2="13" y2="6.5" />
+          <circle cx="10" cy="3.5" r="0.8" fill="currentColor" />
+          <circle cx="16.5" cy="10" r="0.8" fill="currentColor" />
+          <circle cx="10" cy="16.5" r="0.8" fill="currentColor" />
+          <circle cx="3.5" cy="10" r="0.8" fill="currentColor" />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -810,6 +855,222 @@ function findBeatId(
     if (!closest || delta < closest.delta) closest = { id: beat.id, delta };
   }
   return closest?.id ?? null;
+}
+
+/**
+ * Linear timeline — beats sweep right→left toward a fixed hit line at
+ * x = 0.25 W. Three lanes (DING / TCH / DONG). Detected mic notes plot
+ * just below the lane centre so they don't collide with the targets.
+ */
+function paintLinear(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  scheduler: ToqueScheduler | null,
+  renderNow: number,
+  outcomes: Map<number, BeatResult & { at: number }>,
+) {
+  const hitX = Math.round(w * 0.25);
+  const pxPerSec = (w - hitX) / LEAD_SECONDS;
+  const toleranceW = 0.08 * pxPerSec;
+
+  ctx.fillStyle = 'rgba(255,138,61,0.08)';
+  ctx.fillRect(hitX - toleranceW, 0, toleranceW * 2, h);
+  ctx.strokeStyle = '#ff8a3d';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(hitX, 0);
+  ctx.lineTo(hitX, h);
+  ctx.stroke();
+
+  const laneY = (sound: Sound) => {
+    if (sound === 'dong') return h * 0.72;
+    if (sound === 'ding') return h * 0.28;
+    return h * 0.5;
+  };
+  ctx.strokeStyle = '#141a2a';
+  ctx.lineWidth = 1;
+  for (const s of ['dong', 'ch', 'ding'] as const) {
+    const y = laneY(s);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  if (scheduler) {
+    const beats = scheduler.beatsInWindow(renderNow - 0.3, renderNow + LEAD_SECONDS);
+    for (const beat of beats) {
+      const x = hitX + (beat.beatTime - renderNow) * pxPerSec;
+      if (x < -40 || x > w + 40) continue;
+      drawTarget(ctx, beat, x, laneY(beat.sound), outcomes.get(beat.id));
+    }
+  }
+
+  const notes = audioBus.recentNotes;
+  for (let i = notes.length - 1; i >= 0; i--) {
+    const note = notes[i]!;
+    const x = hitX + (note.timestamp - renderNow) * pxPerSec;
+    if (x < -40 || x > w + 40) continue;
+    drawDetectedNote(
+      ctx,
+      note,
+      x,
+      laneY(note.soundClass === 'unknown' ? 'ch' : (note.soundClass as Sound)),
+    );
+  }
+}
+
+/**
+ * Circular timeline — fixed pattern, rotating sweep hand. The cycle wraps
+ * once per cycleSeconds. Beats sit at fixed angles; the orange hand
+ * passes each one at exactly the right moment. Detected mic notes plot
+ * inside the ring at their detection angle.
+ */
+function paintCircular(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  scheduler: ToqueScheduler,
+  renderNow: number,
+  outcomes: Map<number, BeatResult & { at: number }>,
+  firstBeatAt: number,
+) {
+  const cx = w / 2;
+  const cy = h / 2;
+  const radius = Math.min(w, h) * 0.36;
+  const cycleSeconds = scheduler.cycleSeconds;
+  if (cycleSeconds <= 0) return;
+  const intervalLen = scheduler['options'].toque.intervals.length;
+  const slotCount = intervalLen * 2;
+
+  // Background ring
+  ctx.strokeStyle = '#1a2135';
+  ctx.lineWidth = radius * 0.16;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Tolerance band painted along the entire ring (thin glow). Distinct
+  // arcs at each beat would be more accurate but harder to read; this
+  // hint communicates "inside-the-ring is the hit zone."
+  ctx.strokeStyle = 'rgba(255,138,61,0.07)';
+  ctx.lineWidth = radius * 0.16;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Slot dividers — every eighth-note position. Downbeats stronger.
+  for (let i = 0; i < slotCount; i++) {
+    const angle = (i / slotCount) * Math.PI * 2 - Math.PI / 2;
+    const r1 = radius - radius * 0.1;
+    const r2 = radius + radius * 0.1;
+    ctx.strokeStyle = i % 2 === 0 ? '#2a3556' : '#1f2740';
+    ctx.lineWidth = i % 2 === 0 ? 1.2 : 0.6;
+    ctx.beginPath();
+    ctx.moveTo(cx + r1 * Math.cos(angle), cy + r1 * Math.sin(angle));
+    ctx.lineTo(cx + r2 * Math.cos(angle), cy + r2 * Math.sin(angle));
+    ctx.stroke();
+  }
+
+  // Pick the cycle to render — clamp to 0 during count-in so the user
+  // sees the upcoming pattern before the first beat fires.
+  const cycleIndex = Math.max(
+    0,
+    Math.floor((renderNow - firstBeatAt) / cycleSeconds),
+  );
+  const cycleStart = firstBeatAt + cycleIndex * cycleSeconds;
+  const cycleBeats = scheduler.beatsInWindow(
+    cycleStart - 0.001,
+    cycleStart + cycleSeconds - 0.001,
+  );
+
+  // Target glyphs around the ring
+  for (const beat of cycleBeats) {
+    const tInCycle = beat.beatTime - cycleStart;
+    const angle = (tInCycle / cycleSeconds) * Math.PI * 2 - Math.PI / 2;
+    const bx = cx + radius * Math.cos(angle);
+    const by = cy + radius * Math.sin(angle);
+    drawTarget(ctx, beat, bx, by, outcomes.get(beat.id));
+  }
+
+  // Detected notes — plot inside the ring at the angle they were heard.
+  const innerR = radius - radius * 0.32;
+  const notes = audioBus.recentNotes;
+  for (let i = notes.length - 1; i >= 0; i--) {
+    const note = notes[i]!;
+    const tSinceCycleStart = note.timestamp - cycleStart;
+    if (tSinceCycleStart < -0.2 || tSinceCycleStart > cycleSeconds + 0.05) continue;
+    const angle = (tSinceCycleStart / cycleSeconds) * Math.PI * 2 - Math.PI / 2;
+    const dx = cx + innerR * Math.cos(angle);
+    const dy = cy + innerR * Math.sin(angle);
+    drawDetectedNoteCircular(ctx, note, dx, dy);
+  }
+
+  // Sweep hand — only after the first beat is reachable. During count-in
+  // the pattern shows but the hand is hidden so it isn't crashing through
+  // a 12 o'clock seam.
+  if (renderNow >= firstBeatAt) {
+    const tInCycle =
+      ((renderNow - cycleStart) % cycleSeconds + cycleSeconds) % cycleSeconds;
+    const sweepAngle = (tInCycle / cycleSeconds) * Math.PI * 2 - Math.PI / 2;
+
+    // Comet trail — short, fading
+    for (let i = 8; i > 0; i--) {
+      const dt = (0.35 * i) / 8;
+      const a = sweepAngle - (dt / cycleSeconds) * Math.PI * 2;
+      const tx = cx + radius * Math.cos(a);
+      const ty = cy + radius * Math.sin(a);
+      ctx.globalAlpha = (1 - i / 8) * 0.35;
+      ctx.fillStyle = '#ff8a3d';
+      ctx.beginPath();
+      ctx.arc(tx, ty, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    const hx = cx + radius * Math.cos(sweepAngle);
+    const hy = cy + radius * Math.sin(sweepAngle);
+    ctx.strokeStyle = '#ff8a3d';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ff8a3d';
+    ctx.beginPath();
+    ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Center pivot
+  ctx.fillStyle = '#2a3556';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawDetectedNoteCircular(
+  ctx: CanvasRenderingContext2D,
+  note: DetectedNote,
+  x: number,
+  y: number,
+) {
+  const sound = note.soundClass;
+  const color = sound === 'unknown' ? '#8a93b0' : SOUND_COLORS[sound as Sound];
+  const r = 4 + note.amplitude * 5;
+  ctx.globalAlpha = note.isMistake ? 0.3 : 0.55;
+  if (sound === 'unknown') {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    drawSoundGlyph(ctx, sound as Sound, x, y, r, color);
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawTarget(

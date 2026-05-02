@@ -3,16 +3,13 @@ import { Link, useLocation } from 'wouter';
 import {
   DIFFICULTY_LABELS,
   GLOBAL_BPM_RANGE,
-  SOUND_COLORS,
-  SOUND_GLYPHS,
   SOUND_LABELS,
   TOQUES,
   toquesByDifficulty,
-  type IntervalToken,
   type Sound,
   type ToqueName,
-  type ToquePattern,
 } from '@/engine/rhythms';
+import { SoundSymbol } from '@/components/SoundSymbol';
 import { preloadActiveProfiles } from '@/audio/active-profiles';
 import type { SavedCalibration } from '@/engine/calibration';
 import { listRecentSessions } from '@/storage/sessions-store';
@@ -146,7 +143,6 @@ export function Home() {
             </div>
           ))}
         </div>
-        <p className="text-xs text-text-dim">{toque.description}</p>
       </section>
 
       <section className="w-full flex flex-col gap-2">
@@ -177,8 +173,6 @@ export function Home() {
           <span>{GLOBAL_BPM_RANGE[1]}</span>
         </div>
       </section>
-
-      <PatternPreview toque={toque} />
 
       <CalibrationCard calibration={calibration} />
 
@@ -213,131 +207,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
       {children}
     </h2>
-  );
-}
-
-/**
- * SVG renderer for the three sound glyphs (× / ○ / ●). Used in the
- * sound-key chips at the top of Home and in the pattern preview.
- */
-function SoundSymbol({ sound, size = 32 }: { sound: Sound; size?: number }) {
-  const color = SOUND_COLORS[sound];
-  const stroke = Math.max(2, size * 0.16);
-  const r = size * 0.42;
-  const c = size / 2;
-  const filter = `drop-shadow(0 0 ${size * 0.6}px ${color}55)`;
-
-  if (sound === 'ch') {
-    const k = r * 0.78;
-    return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ filter }}>
-        <line x1={c - k} y1={c - k} x2={c + k} y2={c + k} stroke={color} strokeWidth={stroke} strokeLinecap="round" />
-        <line x1={c + k} y1={c - k} x2={c - k} y2={c + k} stroke={color} strokeWidth={stroke} strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (sound === 'dong') {
-    return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ filter }}>
-        <circle cx={c} cy={c} r={r} stroke={color} strokeWidth={stroke} fill="none" />
-      </svg>
-    );
-  }
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ filter }}>
-      <circle cx={c} cy={c} r={r} fill={color} />
-    </svg>
-  );
-}
-
-/**
- * Variable-length pattern preview — one card cell per beat (interval).
- * tch_tch beats render two small × side-by-side; everything else is a
- * single centered glyph; rests are dim placeholder cells.
- */
-function PatternPreview({ toque }: { toque: ToquePattern }) {
-  if (toque.intervals.length === 0) {
-    return (
-      <section className="w-full flex flex-col gap-2">
-        <SectionLabel>Pattern</SectionLabel>
-        <div className="card p-6 text-center text-sm text-text-dim">
-          Pattern coming soon.
-        </div>
-      </section>
-    );
-  }
-  const cycleBeats = toque.intervals.length;
-  return (
-    <section className="w-full flex flex-col gap-2">
-      <SectionLabel>Pattern</SectionLabel>
-      <div className="card p-3 flex flex-col gap-2">
-        <div
-          className="grid gap-1.5"
-          style={{ gridTemplateColumns: `repeat(${cycleBeats}, minmax(0, 1fr))` }}
-        >
-          {toque.intervals.map((token, i) => (
-            <PatternCell key={i} token={token} accent={i === 0} />
-          ))}
-        </div>
-        <div
-          className="grid gap-1.5"
-          style={{ gridTemplateColumns: `repeat(${cycleBeats}, minmax(0, 1fr))` }}
-        >
-          {toque.intervals.map((_, i) => (
-            <div
-              key={i}
-              className="text-[9px] text-center font-mono text-text-dim tracking-wider"
-            >
-              {i + 1}
-            </div>
-          ))}
-        </div>
-      </div>
-      <p className="text-[10px] text-text-dim">
-        {cycleBeats}-beat cycle{cycleBeats === 8 ? ' (2 bars)' : ' (1 bar)'} ·{' '}
-        <span className="font-mono">×</span> chiado ·{' '}
-        <span className="font-mono">○</span> open (DONG) ·{' '}
-        <span className="font-mono">●</span> closed (DING)
-      </p>
-    </section>
-  );
-}
-
-function PatternCell({ token, accent }: { token: IntervalToken; accent: boolean }) {
-  if (token === 'rest') {
-    return (
-      <div className="aspect-square rounded-md bg-bg/60 border border-border/60 flex items-center justify-center text-text-dim/60 text-xs font-mono">
-        ·
-      </div>
-    );
-  }
-
-  const ringClass = accent
-    ? 'ring-2 ring-accent/30 ring-offset-1 ring-offset-bg-elev'
-    : '';
-
-  if (token === 'tch_tch') {
-    return (
-      <div
-        className={`aspect-square rounded-md bg-bg flex items-center justify-center gap-1 border border-border ${ringClass}`}
-      >
-        <SoundSymbol sound="ch" size={18} />
-        <SoundSymbol sound="ch" size={18} />
-      </div>
-    );
-  }
-
-  // Single-glyph cell. Map token to internal Sound for the glyph lookup.
-  const sound: Sound = token === 'tch' ? 'ch' : token;
-  // Show the glyph nice and big.
-  const _label = SOUND_GLYPHS[sound];
-  void _label;
-  return (
-    <div
-      className={`aspect-square rounded-md bg-bg flex items-center justify-center border border-border ${ringClass}`}
-    >
-      <SoundSymbol sound={sound} size={28} />
-    </div>
   );
 }
 
