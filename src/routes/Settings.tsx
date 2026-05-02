@@ -259,29 +259,6 @@ export function Settings() {
           <p className="text-xs text-text-dim font-mono text-center">{toast}</p>
         )}
       </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          About
-        </h2>
-        <Card>
-          <div className="flex flex-col gap-1 text-sm">
-            <span>Berimbau Trainer — v2 · web</span>
-            <span className="text-xs text-text-dim">
-              Ground-up TypeScript rewrite of the{' '}
-              <a
-                href="https://github.com/jmoraispk/berimbau-trainer"
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-4"
-              >
-                Python + Kivy v1
-              </a>
-              , running entirely in the browser. No data leaves your device.
-            </span>
-          </div>
-        </Card>
-      </section>
     </main>
   );
 }
