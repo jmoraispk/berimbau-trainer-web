@@ -26,9 +26,13 @@ const ABS_FLOOR = 0.01;
 const RATIO = 2.2;
 const BASELINE_TAU_SEC = 0.5;
 
-// Quick capture: low-latency, used by Practice for live scoring.
+// Quick capture: low-latency, used by Practice for live scoring AND for
+// calibration's classifier window (so the profile measures exactly what
+// Practice will see). 150 ms total = 20 ms pre + 130 ms post-onset —
+// long enough for stable autocorrelation f0 across the whole berimbau
+// range (80–250 Hz) and a meaningful spectral centroid.
 const QUICK_PRE_SEC = 0.02;
-const QUICK_POST_SEC = 0.08;
+const QUICK_POST_SEC = 0.13;
 const QUICK_TOTAL_SEC = QUICK_PRE_SEC + QUICK_POST_SEC;
 
 // Full capture: longer, used by Calibrate for thumbnails + playback.

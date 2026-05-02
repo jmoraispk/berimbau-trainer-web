@@ -13,6 +13,7 @@ import {
 import type { ClassifiableSound } from '@/engine/profiles';
 import { saveProfile } from '@/storage/profiles-store';
 import { setActiveProfiles } from '@/audio/active-profiles';
+import { useI18n, type TFn } from '@/i18n';
 
 /**
  * Three-stage guided calibration: TCH → DONG → DING.
@@ -38,11 +39,12 @@ const TIER_PERFECT = 7;
 const CYCLE_SEC = 3;
 const PREP_SEC = 2;
 const STRIKE_SEC = 0.4;
-// Classifier window: 100ms (20ms pre + 80ms post-onset) — same as the
-// live worklet's 'onsetQuick' message, so calibration profiles describe
-// exactly what Practice sees.
+// Classifier window: 150 ms (20 ms pre + 130 ms post-onset) — same as
+// the live worklet's 'onsetQuick' message, so calibration profiles
+// describe exactly what Practice sees. Long enough for stable
+// autocorrelation f0 across the berimbau's typical 80–250 Hz range.
 const CLASSIFIER_PRE_SEC = 0.02;
-const CLASSIFIER_TOTAL_SEC = 0.1;
+const CLASSIFIER_TOTAL_SEC = 0.15;
 
 type Phase =
   | { kind: 'idle' }
@@ -55,6 +57,7 @@ type Phase =
 
 export function Calibrate() {
   const [, navigate] = useLocation();
+  const { t } = useI18n();
   const inputRef = useRef<AudioInput | null>(null);
   const lastSeenTsRef = useRef(-Infinity);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
@@ -172,20 +175,20 @@ export function Calibrate() {
     if (ok) {
       setActiveProfiles(saved);
       setPhase({ kind: 'saved', savedAt: saved.savedAt });
-    } else setPhase({ kind: 'error', message: 'Failed to save calibration.' });
+    } else setPhase({ kind: 'error', message: t('calibrate.error_save') });
   };
 
   return (
     <main className="min-h-full flex flex-col items-center px-6 py-10 gap-6 max-w-3xl mx-auto">
       <header className="flex flex-col items-center gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Calibrate your berimbau</h1>
-        <p className="text-text-dim text-sm text-center max-w-md">
-          Play each sound in time with the cue. Tap a thumbnail to hear it back, × to discard.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t('calibrate.title')}</h1>
+        <p className="text-text-dim text-sm text-center max-w-md">{t('calibrate.tagline')}</p>
       </header>
 
-      {phase.kind === 'idle' && <Idle onStart={handleStartMic} />}
-      {phase.kind === 'starting' && <p className="text-text-dim">Starting microphone…</p>}
+      {phase.kind === 'idle' && <Idle onStart={handleStartMic} t={t} />}
+      {phase.kind === 'starting' && (
+        <p className="text-text-dim">{t('calibrate.starting_mic')}</p>
+      )}
 
       {phase.kind === 'recording' && activeSound && (
         <>
@@ -194,12 +197,14 @@ export function Calibrate() {
             samples={samples.filter((s) => s.sound === activeSound)}
             onPlay={handlePlaySample}
             onDiscard={handleDiscardSample}
+            t={t}
           />
           <StageStrip byClass={byClass} activeStage={phase.stage} />
           <RecordingActions
             stageCount={byClass[activeSound]}
             isLastStage={phase.stage === STAGES.length - 1}
             onAdvance={advanceStage}
+            t={t}
           />
         </>
       )}
@@ -212,20 +217,21 @@ export function Calibrate() {
           onDiscard={handleDiscardSample}
           onRestart={handleRestart}
           onSave={handleSave}
+          t={t}
         />
       )}
 
-      {phase.kind === 'saving' && <p className="text-text-dim">Saving…</p>}
+      {phase.kind === 'saving' && <p className="text-text-dim">{t('calibrate.saving')}</p>}
 
       {phase.kind === 'saved' && (
-        <Saved onHome={() => navigate('/')} onRestart={handleRestart} />
+        <Saved onHome={() => navigate('/')} onRestart={handleRestart} t={t} />
       )}
 
       {phase.kind === 'error' && (
         <div className="card flex flex-col items-center gap-3 px-6 py-4">
           <p className="text-red-400 text-sm">{phase.message}</p>
           <button type="button" onClick={handleStartMic} className="btn-primary">
-            Try again
+            {t('common.try_again')}
           </button>
         </div>
       )}
@@ -235,7 +241,7 @@ export function Calibrate() {
         onClick={() => navigate('/')}
         className="mt-2 text-xs text-text-dim underline"
       >
-        Cancel and return home
+        {t('calibrate.cancel_return')}
       </button>
     </main>
   );
@@ -248,25 +254,27 @@ function RecordingPanel({
   samples,
   onPlay,
   onDiscard,
+  t,
 }: {
   activeSound: ClassifiableSound;
   samples: CalibrationSample[];
   onPlay: (sample: CalibrationSample) => void;
   onDiscard: (at: number) => void;
+  t: TFn;
 }) {
   return (
     <div className="w-full grid md:grid-cols-[auto_1fr] gap-6 items-start">
       <div className="flex justify-center md:justify-start">
-        <CycleRing sound={activeSound} />
+        <CycleRing sound={activeSound} t={t} />
       </div>
       <div className="flex flex-col gap-2 min-w-0">
         <div className="flex items-baseline justify-between">
           <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-            Captured {SOUND_LABELS[activeSound]}
+            {t('calibrate.captured', { sound: SOUND_LABELS[activeSound] })}
           </span>
-          <TierBadge count={samples.length} />
+          <TierBadge count={samples.length} t={t} />
         </div>
-        <SampleGrid samples={samples} onPlay={onPlay} onDiscard={onDiscard} />
+        <SampleGrid samples={samples} onPlay={onPlay} onDiscard={onDiscard} t={t} />
       </div>
     </div>
   );
@@ -276,13 +284,15 @@ function RecordingActions({
   stageCount,
   isLastStage,
   onAdvance,
+  t,
 }: {
   stageCount: number;
   isLastStage: boolean;
   onAdvance: () => void;
+  t: TFn;
 }) {
   const canAdvance = stageCount >= MIN_SAMPLES_PER_CLASS;
-  const label = isLastStage ? 'Finish & review' : 'Next sound';
+  const label = isLastStage ? t('calibrate.finish_review') : t('calibrate.next_sound');
   return (
     <button
       type="button"
@@ -307,7 +317,7 @@ function RecordingActions({
  *
  * Animated via rAF — single SVG re-render per frame. Cheap.
  */
-function CycleRing({ sound }: { sound: ClassifiableSound }) {
+function CycleRing({ sound, t }: { sound: ClassifiableSound; t: TFn }) {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
@@ -391,7 +401,7 @@ function CycleRing({ sound }: { sound: ClassifiableSound }) {
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
         <SoundSymbol sound={sound} size={64} />
         <span className="text-xs font-semibold tracking-[0.2em] text-text-dim">
-          {strike ? 'PLAY' : 'GET READY'}
+          {strike ? t('calibrate.cue_play') : t('calibrate.cue_get_ready')}
         </span>
       </div>
     </div>
@@ -404,15 +414,17 @@ function SampleGrid({
   samples,
   onPlay,
   onDiscard,
+  t,
 }: {
   samples: CalibrationSample[];
   onPlay: (sample: CalibrationSample) => void;
   onDiscard: (at: number) => void;
+  t: TFn;
 }) {
   if (samples.length === 0) {
     return (
       <div className="card flex items-center justify-center min-h-[80px] text-xs text-text-dim">
-        Captured strikes will land here.
+        {t('calibrate.empty')}
       </div>
     );
   }
@@ -424,6 +436,7 @@ function SampleGrid({
           sample={s}
           onPlay={() => onPlay(s)}
           onDiscard={() => onDiscard(s.at)}
+          t={t}
         />
       ))}
     </div>
@@ -434,10 +447,12 @@ function SampleThumbnail({
   sample,
   onPlay,
   onDiscard,
+  t,
 }: {
   sample: CalibrationSample;
   onPlay: () => void;
   onDiscard: () => void;
+  t: TFn;
 }) {
   const path = useMemo(() => {
     if (!sample.segment) return '';
@@ -454,7 +469,10 @@ function SampleThumbnail({
         type="button"
         onClick={onPlay}
         className="w-full block rounded-md bg-bg border border-border hover:border-accent transition overflow-hidden"
-        title={`f0 ${sample.f0.toFixed(0)} Hz · centroid ${sample.centroid.toFixed(0)} Hz · click to play`}
+        title={t('calibrate.thumbnail_title', {
+          f0: sample.f0.toFixed(0),
+          centroid: sample.centroid.toFixed(0),
+        })}
       >
         <svg viewBox="0 0 100 36" className="block w-full h-9">
           {onsetX != null && (
@@ -466,8 +484,8 @@ function SampleThumbnail({
       <button
         type="button"
         onClick={onDiscard}
-        title="Discard this sample"
-        aria-label="Discard"
+        title={t('calibrate.discard_title')}
+        aria-label={t('calibrate.discard_aria')}
         className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-bg-elev border border-border text-text-dim hover:text-red-400 hover:border-red-400/60 flex items-center justify-center text-[10px] leading-none transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
       >
         ×
@@ -510,19 +528,23 @@ function extractClassifierFeatures(capture: RawCapture): { f0: number; centroid:
 
 // ─── Tier badge ──────────────────────────────────────────────────────────
 
-function TierBadge({ count }: { count: number }) {
+function TierBadge({ count, t }: { count: number; t: TFn }) {
   const tier =
     count >= TIER_PERFECT
-      ? { label: 'perfect', color: '#64f08c' }
+      ? { label: t('calibrate.perfect'), color: '#64f08c' }
       : count >= TIER_GREAT
-      ? { label: 'great', color: '#a7e87a' }
+      ? { label: t('calibrate.great'), color: '#a7e87a' }
       : count >= TIER_GOOD
-      ? { label: 'good', color: '#f2b640' }
+      ? { label: t('calibrate.good'), color: '#f2b640' }
       : null;
   if (!tier) {
     return (
       <span className="text-[10px] font-mono text-text-dim">
-        {count}/{TIER_GOOD} · need {TIER_GOOD - count} more
+        {t('calibrate.need_more', {
+          count,
+          min: TIER_GOOD,
+          n: TIER_GOOD - count,
+        })}
       </span>
     );
   }
@@ -572,15 +594,12 @@ function StageStrip({
 
 // ─── Idle / Review / Saved ───────────────────────────────────────────────
 
-function Idle({ onStart }: { onStart: () => void }) {
+function Idle({ onStart, t }: { onStart: () => void; t: TFn }) {
   return (
     <div className="flex flex-col items-center gap-4 card px-6 py-5 max-w-md text-center">
-      <p className="text-text-dim text-sm">
-        Three sounds, three stages. Watch the ring fill, strike on the orange flash, and
-        review the captured waveforms before saving.
-      </p>
+      <p className="text-text-dim text-sm">{t('calibrate.idle_body')}</p>
       <button type="button" onClick={onStart} className="btn-primary">
-        Open microphone
+        {t('calibrate.open_mic')}
       </button>
     </div>
   );
@@ -593,6 +612,7 @@ function ReviewPanel({
   onDiscard,
   onRestart,
   onSave,
+  t,
 }: {
   samples: CalibrationSample[];
   byClass: Record<ClassifiableSound, number>;
@@ -600,12 +620,13 @@ function ReviewPanel({
   onDiscard: (at: number) => void;
   onRestart: () => void;
   onSave: () => void;
+  t: TFn;
 }) {
   const canSave = STAGES.every((s) => byClass[s] >= MIN_SAMPLES_PER_CLASS);
   return (
     <div className="w-full flex flex-col gap-5">
       <p className="text-text-dim text-sm text-center">
-        Collected {samples.length} samples across {STAGES.length} sounds.
+        {t('calibrate.review_summary', { n: samples.length, m: STAGES.length })}
       </p>
       <div className="flex flex-col gap-4">
         {STAGES.map((sound) => {
@@ -617,9 +638,9 @@ function ReviewPanel({
                   <SoundSymbol sound={sound} size={20} glow={false} />
                   {SOUND_LABELS[sound]}
                 </span>
-                <TierBadge count={stageSamples.length} />
+                <TierBadge count={stageSamples.length} t={t} />
               </div>
-              <SampleGrid samples={stageSamples} onPlay={onPlay} onDiscard={onDiscard} />
+              <SampleGrid samples={stageSamples} onPlay={onPlay} onDiscard={onDiscard} t={t} />
             </div>
           );
         })}
@@ -627,36 +648,45 @@ function ReviewPanel({
       <Scatter samples={samples} />
       <div className="flex justify-center gap-3">
         <button type="button" onClick={onRestart} className="btn-secondary">
-          Restart
+          {t('calibrate.review_restart')}
         </button>
         <button
           type="button"
           onClick={onSave}
           disabled={!canSave}
           className="btn-primary disabled:opacity-50"
-          title={canSave ? 'Save calibration' : `Each sound needs at least ${MIN_SAMPLES_PER_CLASS} samples`}
+          title={
+            canSave
+              ? t('calibrate.review_save')
+              : t('calibrate.review_save_disabled', { n: MIN_SAMPLES_PER_CLASS })
+          }
         >
-          Save calibration
+          {t('calibrate.review_save')}
         </button>
       </div>
     </div>
   );
 }
 
-function Saved({ onHome, onRestart }: { onHome: () => void; onRestart: () => void }) {
+function Saved({
+  onHome,
+  onRestart,
+  t,
+}: {
+  onHome: () => void;
+  onRestart: () => void;
+  t: TFn;
+}) {
   return (
     <div className="flex flex-col items-center gap-4 card px-6 py-5 max-w-md text-center">
-      <p className="text-text">Calibration saved.</p>
-      <p className="text-text-dim text-sm">
-        Your profile is now loaded and will be used automatically the next time
-        you practice.
-      </p>
+      <p className="text-text">{t('calibrate.saved')}</p>
+      <p className="text-text-dim text-sm">{t('calibrate.saved_body')}</p>
       <div className="flex gap-3">
         <button type="button" onClick={onRestart} className="btn-secondary">
-          Recalibrate
+          {t('home.recalibrate')}
         </button>
         <button type="button" onClick={onHome} className="btn-primary">
-          Back to home
+          {t('practice.back_home')}
         </button>
       </div>
     </div>

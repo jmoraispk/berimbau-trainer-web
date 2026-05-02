@@ -11,6 +11,7 @@ import {
 import { SOUND_COLORS } from '@/engine/rhythms';
 import type { Sound } from '@/engine/rhythms';
 import { listAllSessions } from '@/storage/sessions-store';
+import { useI18n, type TFn } from '@/i18n';
 
 /**
  * Full practice history: lifetime counters, per-toque aggregates, and
@@ -20,6 +21,7 @@ import { listAllSessions } from '@/storage/sessions-store';
 type ToqueFilter = 'all' | ToqueStats['toqueName'];
 
 export function Stats() {
+  const { t } = useI18n();
   const [sessions, setSessions] = useState<SessionRecord[] | null>(null);
   const [toqueFilter, setToqueFilter] = useState<ToqueFilter>('all');
 
@@ -52,7 +54,7 @@ export function Stats() {
   if (!sessions) {
     return (
       <main className="min-h-full px-6 py-8 max-w-2xl mx-auto">
-        <p className="text-text-dim text-sm">Loading…</p>
+        <p className="text-text-dim text-sm">{t('stats.loading')}</p>
       </main>
     );
   }
@@ -61,29 +63,28 @@ export function Stats() {
     <main className="min-h-full px-6 py-8 max-w-2xl mx-auto flex flex-col gap-6">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col">
-          <h1 className="text-2xl font-semibold tracking-tight">Stats</h1>
-          <p className="text-text-dim text-sm">
-            Your practice history on this device.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t('stats.title')}</h1>
+          <p className="text-text-dim text-sm">{t('stats.subtitle')}</p>
         </div>
         <Link href="/" className="btn-ghost shrink-0">
-          ← Back
+          {t('common.back')}
         </Link>
       </header>
 
       {sessions.length === 0 ? (
-        <EmptyState />
+        <EmptyState t={t} />
       ) : (
         <>
-          <LifetimeCard sessions={sessions} />
-          {heatmap && <HeatmapCard heatmap={heatmap} />}
-          {toqueStats.length > 0 && <ToqueCards stats={toqueStats} />}
+          <LifetimeCard sessions={sessions} t={t} />
+          {heatmap && <HeatmapCard heatmap={heatmap} t={t} />}
+          {toqueStats.length > 0 && <ToqueCards stats={toqueStats} t={t} />}
           <SessionLog
             sessions={filtered}
             totalCount={sessions.length}
             toqueStats={toqueStats}
             toqueFilter={toqueFilter}
             setToqueFilter={setToqueFilter}
+            t={t}
           />
         </>
       )}
@@ -91,20 +92,18 @@ export function Stats() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ t }: { t: TFn }) {
   return (
     <div className="card flex flex-col items-center gap-3 py-10 text-center">
-      <span className="text-sm text-text-dim">
-        No practice history yet.
-      </span>
+      <span className="text-sm text-text-dim">{t('stats.empty')}</span>
       <Link href="/" className="btn-ghost">
-        Start a session
+        {t('stats.start_session')}
       </Link>
     </div>
   );
 }
 
-function LifetimeCard({ sessions }: { sessions: SessionRecord[] }) {
+function LifetimeCard({ sessions, t }: { sessions: SessionRecord[]; t: TFn }) {
   const totalMinutes = Math.round(
     sessions.reduce((s, r) => s + r.elapsedSec, 0) / 60,
   );
@@ -116,18 +115,18 @@ function LifetimeCard({ sessions }: { sessions: SessionRecord[] }) {
 
   return (
     <section className="card grid grid-cols-2 md:grid-cols-4 gap-3 p-4">
-      <Stat label="Sessions" value={String(sessions.length)} />
-      <Stat label="Total time" value={`${totalMinutes}m`} />
-      <Stat label="Beats scored" value={String(totalBeats)} />
-      <Stat label="Avg accuracy" value={`${Math.round(avg * 100)}%`} />
-      <Stat label="Days practiced" value={String(uniqueDays)} />
+      <Stat label={t('stats.sessions')} value={String(sessions.length)} />
+      <Stat label={t('stats.total_time')} value={`${totalMinutes}m`} />
+      <Stat label={t('stats.beats_scored')} value={String(totalBeats)} />
+      <Stat label={t('stats.avg_accuracy')} value={`${Math.round(avg * 100)}%`} />
+      <Stat label={t('stats.days_practiced')} value={String(uniqueDays)} />
       <Stat
-        label="Current streak"
+        label={t('stats.current_streak')}
         value={streak > 0 ? `${streak}d` : '—'}
         emphasis={streak > 0}
       />
-      <Stat label="First session" value={firstSessionLabel(sessions)} />
-      <Stat label="Last session" value={lastSessionLabel(sessions)} />
+      <Stat label={t('stats.first_session')} value={firstSessionLabel(sessions)} />
+      <Stat label={t('stats.last_session')} value={lastSessionLabel(sessions)} />
     </section>
   );
 }
@@ -155,7 +154,7 @@ function Stat({
   );
 }
 
-function HeatmapCard({ heatmap }: { heatmap: Heatmap }) {
+function HeatmapCard({ heatmap, t }: { heatmap: Heatmap; t: TFn }) {
   const todayKey = dayKey(Date.now());
   const flat = heatmap.weeks.flat();
   const days = flat.filter((c) => c.minutes > 0).length;
@@ -179,16 +178,16 @@ function HeatmapCard({ heatmap }: { heatmap: Heatmap }) {
     }
   });
 
+  const summaryKey = days === 1 ? 'stats.heatmap_summary' : 'stats.heatmap_summary_plural';
+
   return (
     <section className="card flex flex-col gap-3 p-4">
       <div className="flex items-baseline justify-between">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          Last {heatmap.weeks.length} weeks
+          {t('stats.last_n_weeks', { n: heatmap.weeks.length })}
         </h2>
-        <span className="text-xs text-text-dim">
-          <span className="font-mono text-text">{days}</span> day
-          {days === 1 ? '' : 's'} ·{' '}
-          <span className="font-mono text-text">{totalMinutes}</span>m
+        <span className="text-xs text-text-dim font-mono">
+          {t(summaryKey, { days, minutes: totalMinutes })}
         </span>
       </div>
 
@@ -229,7 +228,7 @@ function HeatmapCard({ heatmap }: { heatmap: Heatmap }) {
                     opacity: isFuture ? 0.15 : 1,
                   }}
                   title={`${new Date(cell.timestamp).toLocaleDateString()} · ${
-                    cell.minutes > 0 ? `${cell.minutes.toFixed(0)} min` : 'no practice'
+                    cell.minutes > 0 ? `${cell.minutes.toFixed(0)} min` : '—'
                   }`}
                 />
               );
@@ -239,7 +238,7 @@ function HeatmapCard({ heatmap }: { heatmap: Heatmap }) {
       </div>
 
       <div className="flex items-center gap-2 text-[10px] text-text-dim self-end">
-        <span>less</span>
+        <span>{t('stats.less')}</span>
         <div className="flex gap-[3px]">
           {legend.map((v) => (
             <div
@@ -249,7 +248,7 @@ function HeatmapCard({ heatmap }: { heatmap: Heatmap }) {
             />
           ))}
         </div>
-        <span>more</span>
+        <span>{t('stats.more')}</span>
       </div>
     </section>
   );
@@ -265,35 +264,42 @@ function intensityColor(intensity: number): string {
   return '#ff8a3d';
 }
 
-function ToqueCards({ stats }: { stats: ToqueStats[] }) {
+function ToqueCards({ stats, t }: { stats: ToqueStats[]; t: TFn }) {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-        By toque
+        {t('stats.by_toque')}
       </h2>
       <ul className="flex flex-col gap-2">
-        {stats.map((s) => (
-          <li
-            key={s.toqueName}
-            className="card flex items-center gap-4 px-4 py-3"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{s.toqueName}</div>
-              <div className="text-xs text-text-dim font-mono">
-                {s.sessionCount} session{s.sessionCount === 1 ? '' : 's'} ·{' '}
-                {s.totalMinutes}m · {s.totalBeats} beats
+        {stats.map((s) => {
+          const countKey =
+            s.sessionCount === 1 ? 'stats.session_count_singular' : 'stats.session_count';
+          return (
+            <li
+              key={s.toqueName}
+              className="card flex items-center gap-4 px-4 py-3"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{s.toqueName}</div>
+                <div className="text-xs text-text-dim font-mono">
+                  {t(countKey, {
+                    n: s.sessionCount,
+                    minutes: s.totalMinutes,
+                    beats: s.totalBeats,
+                  })}
+                </div>
               </div>
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="font-mono text-base text-text">
-                {Math.round(s.bestAccuracy * 100)}%
-              </span>
-              <span className="text-[10px] text-text-dim font-mono">
-                best · avg {Math.round(s.averageAccuracy * 100)}%
-              </span>
-            </div>
-          </li>
-        ))}
+              <div className="flex flex-col items-end">
+                <span className="font-mono text-base text-text">
+                  {Math.round(s.bestAccuracy * 100)}%
+                </span>
+                <span className="text-[10px] text-text-dim font-mono">
+                  {t('stats.best_avg', { pct: Math.round(s.averageAccuracy * 100) })}
+                </span>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -305,12 +311,14 @@ function SessionLog({
   toqueStats,
   toqueFilter,
   setToqueFilter,
+  t,
 }: {
   sessions: SessionRecord[];
   totalCount: number;
   toqueStats: ToqueStats[];
   toqueFilter: ToqueFilter;
   setToqueFilter: (f: ToqueFilter) => void;
+  t: TFn;
 }) {
   const haveMultipleToques = toqueStats.length > 1;
 
@@ -318,12 +326,12 @@ function SessionLog({
     <section className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          Session log
+          {t('stats.session_log')}
         </h2>
         <span className="text-xs text-text-dim">
           {sessions.length === totalCount
-            ? `${totalCount} total`
-            : `${sessions.length} of ${totalCount}`}
+            ? t('stats.total', { n: totalCount })
+            : t('stats.shown_of_total', { shown: sessions.length, total: totalCount })}
         </span>
       </div>
 
@@ -333,15 +341,15 @@ function SessionLog({
             active={toqueFilter === 'all'}
             onClick={() => setToqueFilter('all')}
           >
-            All
+            {t('stats.filter_all')}
           </Pill>
-          {toqueStats.map((t) => (
+          {toqueStats.map((ts) => (
             <Pill
-              key={t.toqueName}
-              active={toqueFilter === t.toqueName}
-              onClick={() => setToqueFilter(t.toqueName)}
+              key={ts.toqueName}
+              active={toqueFilter === ts.toqueName}
+              onClick={() => setToqueFilter(ts.toqueName)}
             >
-              {t.toqueName}
+              {ts.toqueName}
             </Pill>
           ))}
         </div>
@@ -352,7 +360,7 @@ function SessionLog({
           const prev = sessions[i - 1];
           const showDateHeader = !prev || dayKey(prev.endedAt) !== dayKey(s.endedAt);
           return (
-            <LogRow key={s.id ?? i} session={s} dateHeader={showDateHeader} />
+            <LogRow key={s.id ?? i} session={s} dateHeader={showDateHeader} t={t} />
           );
         })}
       </ul>
@@ -384,7 +392,15 @@ function Pill({
   );
 }
 
-function LogRow({ session, dateHeader }: { session: SessionRecord; dateHeader: boolean }) {
+function LogRow({
+  session,
+  dateHeader,
+  t,
+}: {
+  session: SessionRecord;
+  dateHeader: boolean;
+  t: TFn;
+}) {
   const mins = Math.max(1, Math.round(session.elapsedSec / 60));
   return (
     <>
@@ -408,7 +424,7 @@ function LogRow({ session, dateHeader }: { session: SessionRecord; dateHeader: b
         <span className="text-text-dim">{session.bpm} bpm</span>
         <span className="text-text-dim w-10 text-right">{mins}m</span>
         <span className="text-text-dim w-14 text-right">
-          {session.totalScoredBeats} hits
+          {t('stats.hits', { n: session.totalScoredBeats })}
         </span>
         <AccuracyCell accuracy={session.accuracy} />
         <SoundDots perSound={session.perSound} />

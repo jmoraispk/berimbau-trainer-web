@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import {
-  DIFFICULTY_LABELS,
   SOUND_LABELS,
   TOQUES,
   toquesByDifficulty,
@@ -15,11 +14,20 @@ import type { SavedCalibration } from '@/engine/calibration';
 import { listRecentSessions } from '@/storage/sessions-store';
 import type { SessionRecord } from '@/engine/session';
 import { streakDays } from '@/engine/session';
+import {
+  LanguageToggle,
+  difficultyLabelKey,
+  formatRelativeTime,
+  toqueDescKey,
+  useI18n,
+  type TFn,
+} from '@/i18n';
 
 const SOUNDS: Sound[] = ['ch', 'dong', 'ding'];
 
 export function Home() {
   const [, navigate] = useLocation();
+  const { t } = useI18n();
   const [toqueName, setToqueName] = useState<ToqueName>('Angola');
   const toque = TOQUES[toqueName];
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
@@ -59,25 +67,28 @@ export function Home() {
 
   return (
     <main className="relative min-h-full flex flex-col items-center px-6 pt-12 pb-14 gap-8 max-w-3xl mx-auto">
-      <Link
-        href="/settings"
-        aria-label="Settings"
-        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 border border-border text-text-dim hover:text-text hover:border-border-strong transition"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="w-[18px] h-[18px]"
-          aria-hidden
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        <LanguageToggle />
+        <Link
+          href="/settings"
+          aria-label={t('home.settings_aria')}
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 border border-border text-text-dim hover:text-text hover:border-border-strong transition"
         >
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      </Link>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-[18px] h-[18px]"
+            aria-hidden
+          >
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </Link>
+      </div>
 
       <header className="flex flex-col items-center gap-3">
         <img src="/icon.svg" alt="" className="w-20 h-20 drop-shadow-[0_6px_30px_rgba(255,138,61,0.25)]" />
@@ -89,9 +100,7 @@ export function Home() {
         >
           Berimbau Trainer
         </h1>
-        <p className="text-text-dim text-center text-sm max-w-sm">
-          Pick a toque, set the tempo, play along into your mic.
-        </p>
+        <p className="text-text-dim text-center text-sm max-w-sm">{t('home.tagline')}</p>
       </header>
 
       <section className="w-full grid grid-cols-3 gap-2">
@@ -107,21 +116,21 @@ export function Home() {
 
       <section className="w-full flex flex-col md:flex-row gap-6 items-start">
         <div className="flex-1 flex flex-col gap-3 min-w-0">
-          <SectionLabel>Toque</SectionLabel>
+          <SectionLabel>{t('home.toque')}</SectionLabel>
           {groups.map((group) => (
             <div key={group.difficulty} className="flex flex-col gap-1.5">
               <span className="text-[10px] font-mono text-text-dim/70 tracking-[0.18em] uppercase">
-                {DIFFICULTY_LABELS[group.difficulty]}
+                {t(difficultyLabelKey(group.difficulty))}
               </span>
               <div className="flex flex-wrap gap-2">
-                {group.toques.map((t) => {
-                  const active = t.name === toqueName;
-                  const disabled = !!t.comingSoon;
+                {group.toques.map((tq) => {
+                  const active = tq.name === toqueName;
+                  const disabled = !!tq.comingSoon;
                   return (
                     <button
-                      key={t.name}
+                      key={tq.name}
                       type="button"
-                      onClick={() => !disabled && onPickToque(t.name)}
+                      onClick={() => !disabled && onPickToque(tq.name)}
                       disabled={disabled}
                       className={`px-3.5 py-1.5 rounded-full text-sm border transition ${
                         active && !disabled
@@ -131,10 +140,10 @@ export function Home() {
                           : 'bg-bg-elev text-text border-border hover:border-border-strong'
                       }`}
                     >
-                      {t.name}
+                      {tq.name}
                       {disabled && (
                         <span className="ml-1.5 text-[10px] font-mono opacity-70">
-                          coming soon
+                          {t('common.coming_soon')}
                         </span>
                       )}
                     </button>
@@ -149,10 +158,10 @@ export function Home() {
           <div className="flex items-baseline justify-between gap-3">
             <SectionLabel>{toque.name}</SectionLabel>
             <span className="text-[10px] font-mono text-text-dim">
-              default {toque.defaultBpm} bpm
+              {t('home.default_bpm', { bpm: toque.defaultBpm })}
             </span>
           </div>
-          <p className="text-xs text-text-dim leading-relaxed">{toque.description}</p>
+          <p className="text-xs text-text-dim leading-relaxed">{t(toqueDescKey(toque.name))}</p>
           <PatternPreview toque={toque} cellSize="compact" />
         </div>
       </section>
@@ -164,32 +173,35 @@ export function Home() {
           disabled={toque.comingSoon}
           className="btn-primary flex-1 py-4 text-base"
         >
-          Start practicing
+          {t('home.start_practicing')}
         </button>
         <Link
           href="/calibrate"
           className="btn-secondary flex-1 py-4 text-base flex flex-col items-center gap-0"
         >
-          <span>{calibration ? 'Recalibrate' : 'Calibrate'}</span>
+          <span>{calibration ? t('home.recalibrate') : t('home.calibrate')}</span>
           {calibration && (
             <span className="text-[10px] text-text-dim font-mono">
-              {totalSamples(calibration)} samples · saved {formatRelative(calibration.savedAt)}
+              {t('home.calibration_subtitle', {
+                count: totalSamples(calibration),
+                time: formatRelativeTime(t, calibration.savedAt),
+              })}
             </span>
           )}
         </Link>
       </div>
 
-      <RecentSessionsCard sessions={sessions} />
+      <RecentSessionsCard sessions={sessions} t={t} />
 
       <Link
         href="/songs"
         className="text-sm text-text-dim underline underline-offset-4 hover:text-text"
       >
-        Browse 185 songs
+        {t('home.browse_songs', { n: 185 })}
       </Link>
 
       <footer className="text-text-dim text-[10px] font-mono tracking-wider mt-auto">
-        {totalToques} toques · v2 · web
+        {t('home.footer', { n: totalToques })}
       </footer>
     </main>
   );
@@ -207,7 +219,7 @@ function totalSamples(c: SavedCalibration): number {
   return c.sampleCount.dong + c.sampleCount.ch + c.sampleCount.ding;
 }
 
-function RecentSessionsCard({ sessions }: { sessions: SessionRecord[] }) {
+function RecentSessionsCard({ sessions, t }: { sessions: SessionRecord[]; t: TFn }) {
   if (sessions.length === 0) return null;
   const streak = streakDays(sessions);
   const averageAccuracy =
@@ -216,15 +228,13 @@ function RecentSessionsCard({ sessions }: { sessions: SessionRecord[] }) {
   return (
     <section className="card w-full flex flex-col gap-3 px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <SectionLabel>Recent sessions</SectionLabel>
+        <SectionLabel>{t('home.recent_sessions')}</SectionLabel>
         <div className="flex items-center gap-3 text-xs text-text-dim">
           {streak > 0 && (
-            <span>
-              <span className="text-accent font-mono">{streak}</span>-day streak
-            </span>
+            <span className="font-mono">{t('home.streak', { n: streak })}</span>
           )}
           <span>
-            avg{' '}
+            {t('home.avg')}{' '}
             <span className="font-mono text-text">
               {Math.round(averageAccuracy * 100)}%
             </span>
@@ -233,25 +243,25 @@ function RecentSessionsCard({ sessions }: { sessions: SessionRecord[] }) {
       </div>
       <ul className="flex flex-col gap-1.5">
         {sessions.map((s, i) => (
-          <SessionRow key={s.id ?? i} session={s} />
+          <SessionRow key={s.id ?? i} session={s} t={t} />
         ))}
       </ul>
       <Link
         href="/stats"
         className="text-[11px] text-text-dim hover:text-text transition self-end"
       >
-        View all stats →
+        {t('home.view_all_stats')}
       </Link>
     </section>
   );
 }
 
-function SessionRow({ session }: { session: SessionRecord }) {
+function SessionRow({ session, t }: { session: SessionRecord; t: TFn }) {
   const mins = Math.max(1, Math.round(session.elapsedSec / 60));
   return (
     <li className="flex items-center gap-3 text-xs">
       <span className="text-text-dim w-20 shrink-0 font-mono">
-        {formatRelative(session.endedAt)}
+        {formatRelativeTime(t, session.endedAt)}
       </span>
       <span className="flex-1 truncate text-text">{session.toqueName}</span>
       <span className="font-mono text-text-dim">{session.bpm} bpm</span>
@@ -266,15 +276,4 @@ function AccuracyPill({ accuracy }: { accuracy: number }) {
   const color =
     pct >= 80 ? 'text-[#64f08c]' : pct >= 60 ? 'text-[#a7e87a]' : pct >= 40 ? 'text-[#f2b640]' : 'text-[#e2506c]';
   return <span className={`font-mono w-11 text-right ${color}`}>{pct}%</span>;
-}
-
-function formatRelative(ts: number): string {
-  const s = Math.max(0, (Date.now() - ts) / 1000);
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.round(h / 24);
-  return `${d} d ago`;
 }

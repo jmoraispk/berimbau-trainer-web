@@ -16,6 +16,7 @@ import {
   buildBackup,
   parseBackup,
 } from '@/storage/backup';
+import { formatRelativeTime, useI18n } from '@/i18n';
 
 /**
  * Local-data management. Everything in this app lives in the browser
@@ -26,6 +27,7 @@ import {
 type Busy = 'calibration' | 'sessions' | 'export' | 'import' | null;
 
 export function Settings() {
+  const { t } = useI18n();
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [busy, setBusy] = useState<Busy>(null);
@@ -46,7 +48,7 @@ export function Settings() {
   }, []);
 
   const onClearCalibration = async () => {
-    if (!confirm('Clear your saved calibration? The classifier will fall back to the default profile.')) return;
+    if (!confirm(t('settings.clear_calibration_confirm'))) return;
     setBusy('calibration');
     const ok = await clearProfile();
     if (ok) {
@@ -57,7 +59,7 @@ export function Settings() {
   };
 
   const onClearSessions = async () => {
-    if (!confirm(`Delete all ${sessions.length} saved sessions? This cannot be undone.`)) return;
+    if (!confirm(t('settings.clear_sessions_confirm', { n: sessions.length }))) return;
     setBusy('sessions');
     const ok = await clearSessions();
     if (ok) setSessions([]);
@@ -83,7 +85,7 @@ export function Settings() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      flashToast(`Exported ${doc.sessions.length} session${doc.sessions.length === 1 ? '' : 's'}.`);
+      flashToast(t('settings.export_done', { n: doc.sessions.length }));
     } finally {
       setBusy(null);
     }
@@ -95,13 +97,17 @@ export function Settings() {
       const text = await file.text();
       const { ok, error, doc } = parseBackup(text);
       if (!ok || !doc) {
-        flashToast(error ? `Import failed: ${error}` : 'Import failed.');
+        flashToast(
+          error ? t('settings.import_failed', { reason: error }) : t('settings.import_failed_generic'),
+        );
         return;
       }
+      const maybeCal = doc.calibration ? t('settings.import_with_calibration') : '';
       const replace = confirm(
-        `Import ${doc.sessions.length} session${doc.sessions.length === 1 ? '' : 's'}${
-          doc.calibration ? ' + calibration' : ''
-        }?\n\nOK: replace existing data.\nCancel: merge (adds to current history).`,
+        t('settings.import_confirm', {
+          sessions: doc.sessions.length,
+          maybe_calibration: maybeCal,
+        }),
       );
       const result = await applyBackup(doc, { replaceExisting: replace });
       // Invalidate the in-memory profile cache so the next mic-start
@@ -111,10 +117,12 @@ export function Settings() {
       const [loaded, all] = await Promise.all([preloadActiveProfiles(), listAllSessions()]);
       setCalibration(loaded);
       setSessions(all);
+      const importedMaybeCal = result.calibrationWritten ? t('settings.import_with_calibration') : '';
       flashToast(
-        `Imported ${result.sessionsWritten} session${result.sessionsWritten === 1 ? '' : 's'}${
-          result.calibrationWritten ? ' + calibration' : ''
-        }.`,
+        t('settings.import_done', {
+          sessions: result.sessionsWritten,
+          maybe_calibration: importedMaybeCal,
+        }),
       );
     } finally {
       setBusy(null);
@@ -131,31 +139,34 @@ export function Settings() {
     <main className="min-h-full px-6 py-8 max-w-2xl mx-auto flex flex-col gap-6">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col">
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-text-dim text-sm">
-            Your calibration and practice history live only in this browser.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
+          <p className="text-text-dim text-sm">{t('settings.subtitle')}</p>
         </div>
         <Link href="/" className="btn-ghost shrink-0">
-          ← Back
+          {t('common.back')}
         </Link>
       </header>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          Calibration profile
+          {t('settings.calibration_profile')}
         </h2>
         <Card>
           {calibration ? (
             <>
               <div className="flex flex-col">
                 <span className="text-sm font-medium">
-                  {totalSamples(calibration)} samples · saved{' '}
-                  {new Date(calibration.savedAt).toLocaleString()}
+                  {t('settings.calibration_summary', {
+                    count: totalSamples(calibration),
+                    time: formatRelativeTime(t, calibration.savedAt),
+                  })}
                 </span>
                 <span className="text-xs text-text-dim">
-                  DONG {calibration.sampleCount.dong} · TCH{' '}
-                  {calibration.sampleCount.ch} · DING {calibration.sampleCount.ding}
+                  {t('settings.calibration_breakdown', {
+                    dong: calibration.sampleCount.dong,
+                    ch: calibration.sampleCount.ch,
+                    ding: calibration.sampleCount.ding,
+                  })}
                 </span>
               </div>
               <button
@@ -164,16 +175,16 @@ export function Settings() {
                 disabled={busy === 'calibration'}
                 className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400/60 hover:text-red-400 transition disabled:opacity-50"
               >
-                Clear
+                {t('settings.clear')}
               </button>
             </>
           ) : (
             <>
               <span className="text-sm text-text-dim">
-                No calibration saved — using default profile.
+                {t('settings.calibration_none')}
               </span>
               <Link href="/calibrate" className="btn-ghost shrink-0">
-                Calibrate
+                {t('home.calibrate')}
               </Link>
             </>
           )}
@@ -182,20 +193,25 @@ export function Settings() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          Practice history
+          {t('settings.history')}
         </h2>
         <Card>
           {sessions.length > 0 ? (
             <>
               <div className="flex flex-col">
                 <span className="text-sm font-medium">
-                  {sessions.length} sessions · {totalMinutes} min · {totalBeats} beats
+                  {t('settings.history_summary', {
+                    sessions: sessions.length,
+                    minutes: totalMinutes,
+                    beats: totalBeats,
+                  })}
                 </span>
                 <span className="text-xs text-text-dim">
-                  First ever:{' '}
-                  {sessions[sessions.length - 1]
-                    ? new Date(sessions[sessions.length - 1]!.startedAt).toLocaleDateString()
-                    : '—'}
+                  {t('settings.history_first_ever', {
+                    date: sessions[sessions.length - 1]
+                      ? new Date(sessions[sessions.length - 1]!.startedAt).toLocaleDateString()
+                      : '—',
+                  })}
                 </span>
               </div>
               <button
@@ -204,12 +220,12 @@ export function Settings() {
                 disabled={busy === 'sessions'}
                 className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400/60 hover:text-red-400 transition disabled:opacity-50"
               >
-                Clear all
+                {t('settings.clear_all')}
               </button>
             </>
           ) : (
             <span className="text-sm text-text-dim">
-              No sessions recorded yet. Hit "End session" after practicing to save.
+              {t('settings.history_none')}
             </span>
           )}
         </Card>
@@ -217,14 +233,12 @@ export function Settings() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          Backup
+          {t('settings.backup')}
         </h2>
         <Card>
           <div className="flex flex-col">
-            <span className="text-sm font-medium">Export or import a backup</span>
-            <span className="text-xs text-text-dim">
-              JSON file · calibration + session history. No accounts, no cloud.
-            </span>
+            <span className="text-sm font-medium">{t('settings.backup_title')}</span>
+            <span className="text-xs text-text-dim">{t('settings.backup_subtitle')}</span>
           </div>
           <div className="flex gap-2">
             <button
@@ -233,7 +247,7 @@ export function Settings() {
               disabled={busy === 'export' || (calibration === null && sessions.length === 0)}
               className="btn-ghost"
             >
-              {busy === 'export' ? 'Exporting…' : 'Export'}
+              {busy === 'export' ? t('settings.exporting') : t('settings.export')}
             </button>
             <button
               type="button"
@@ -241,7 +255,7 @@ export function Settings() {
               disabled={busy === 'import'}
               className="btn-ghost"
             >
-              {busy === 'import' ? 'Importing…' : 'Import'}
+              {busy === 'import' ? t('settings.importing') : t('settings.import')}
             </button>
             <input
               ref={fileInputRef}

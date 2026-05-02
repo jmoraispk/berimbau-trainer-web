@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { Link, useLocation } from 'wouter';
 import type { Song } from '@/engine/songs';
-import { STYLE_INFO } from '@/engine/songs';
 import { TOQUES, type ToqueName } from '@/engine/rhythms';
 import songsData from '@/data/songs.json';
+import { useI18n } from '@/i18n';
+import type { MessageKey } from '@/i18n/messages.en';
 
 /**
  * Song detail — lyrics side-by-side (pt / en when translated), an
@@ -14,18 +15,35 @@ import songsData from '@/data/songs.json';
 
 const SONGS = songsData as Song[];
 
+const STYLE_LABEL_KEY: Record<Song['style'], MessageKey> = {
+  corrido: 'songs.style.corrido',
+  ladainha: 'songs.style.ladainha',
+  quadra: 'songs.style.quadra',
+  maculele: 'songs.style.maculele',
+  samba_de_roda: 'songs.style.samba_de_roda',
+};
+
+const STYLE_INFO_KEY: Record<Song['style'], MessageKey> = {
+  corrido: 'songs.style_info.corrido',
+  ladainha: 'songs.style_info.ladainha',
+  quadra: 'songs.style_info.quadra',
+  maculele: 'songs.style_info.maculele',
+  samba_de_roda: 'songs.style_info.samba_de_roda',
+};
+
 export function SongDetail({ params }: { params: { slug: string } }) {
   const [, navigate] = useLocation();
+  const { t } = useI18n();
   const song = useMemo(() => SONGS.find((s) => s.slug === params.slug), [params.slug]);
 
   if (!song) {
     return (
       <main className="px-6 py-10 max-w-2xl mx-auto flex flex-col gap-4">
         <p className="text-text-dim">
-          No song with slug <span className="font-mono">{params.slug}</span>.
+          {t('song_detail.not_found', { slug: params.slug })}
         </p>
         <Link href="/songs" className="text-accent underline underline-offset-4 text-sm">
-          ← Back to songs
+          {t('song_detail.back')}
         </Link>
       </main>
     );
@@ -49,26 +67,26 @@ export function SongDetail({ params }: { params: { slug: string } }) {
             href="/songs"
             className="text-xs text-text-dim hover:text-text w-fit"
           >
-            ← Songs
+            {t('song_detail.back')}
           </Link>
           <h1 className="text-3xl font-semibold tracking-tight">{song.title}</h1>
           <div className="flex flex-wrap items-center gap-2 text-xs text-text-dim">
             <span className="uppercase tracking-wider font-mono">
-              {song.style.replace('_', ' ')}
+              {t(STYLE_LABEL_KEY[song.style])}
             </span>
             {song.author && <span>· {song.author}</span>}
-            {song.hasLyrics && <span>· {song.lyrics.length} lines</span>}
+            {song.hasLyrics && <span>· {t('songs.lines', { n: song.lyrics.length })}</span>}
           </div>
           <p className="text-xs text-text-dim mt-1 max-w-md">
-            {STYLE_INFO[song.style]}
+            {t(STYLE_INFO_KEY[song.style])}
           </p>
         </div>
       </header>
 
       {(song.typicalToques.length > 0 || song.sourceUrl) && (
         <section className="flex flex-wrap items-center gap-3">
-          {song.typicalToques.map((t) => (
-            <ToquePill key={t} name={t} />
+          {song.typicalToques.map((tq) => (
+            <ToquePill key={tq} name={tq} />
           ))}
           {song.sourceUrl && (
             <a
@@ -86,23 +104,19 @@ export function SongDetail({ params }: { params: { slug: string } }) {
       {song.youtubeId && <YoutubeEmbed id={song.youtubeId} title={song.title} />}
 
       {song.lyrics.length > 0 ? (
-        <Lyrics song={song} hasTranslation={hasTranslation} />
+        <Lyrics song={song} hasTranslation={hasTranslation} t={t} />
       ) : (
         <p className="text-text-dim text-sm">
-          No lyrics stored for this one yet.{' '}
+          {t('song_detail.no_lyrics')}{' '}
           {song.sourceUrl && (
-            <>
-              Try{' '}
-              <a
-                className="underline underline-offset-4"
-                href={song.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                lalaue.com
-              </a>
-              .
-            </>
+            <a
+              className="underline underline-offset-4"
+              href={song.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t('song_detail.try_lalaue')}
+            </a>
           )}
         </p>
       )}
@@ -110,11 +124,11 @@ export function SongDetail({ params }: { params: { slug: string } }) {
       {primaryToque && (
         <div className="flex flex-col items-center gap-2 py-4">
           <button type="button" onClick={startPractice} className="btn-primary">
-            Practice with {primaryToque}
+            {t('song_detail.practice_with', { toque: primaryToque })}
           </button>
           {song.typicalToques.length > 1 && (
             <span className="text-xs text-text-dim">
-              Or pick another toque from the home screen.
+              {t('song_detail.pick_another')}
             </span>
           )}
         </div>
@@ -146,11 +160,22 @@ function YoutubeEmbed({ id, title }: { id: string; title: string }) {
   );
 }
 
-function Lyrics({ song, hasTranslation }: { song: Song; hasTranslation: boolean }) {
+function Lyrics({
+  song,
+  hasTranslation,
+  t,
+}: {
+  song: Song;
+  hasTranslation: boolean;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-        Lyrics {hasTranslation && <span className="normal-case text-[10px] font-normal">· pt / en</span>}
+        {t('song_detail.lyrics')}{' '}
+        {hasTranslation && (
+          <span className="normal-case text-[10px] font-normal">· {t('song_detail.lyrics_pt_en')}</span>
+        )}
       </h2>
       <ol className="flex flex-col gap-1.5">
         {song.lyrics.map((line, i) => (

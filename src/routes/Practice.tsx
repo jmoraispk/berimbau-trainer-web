@@ -21,6 +21,7 @@ import {
   type Outcome,
 } from '@/engine/scoring';
 import { saveSession } from '@/storage/sessions-store';
+import { useI18n, type TFn } from '@/i18n';
 
 /**
  * Practice screen — rhythm timeline + mic scoring.
@@ -60,15 +61,15 @@ const OUTCOME_COLORS: Record<Outcome, string> = {
   mistake: '#8a93b0',
 };
 
-/** Display labels for the outcome ladder used in the HUD + summary. */
-const OUTCOME_LABELS: Record<Outcome, string> = {
-  perfect: 'perfect',
-  good: 'good',
-  wrong_sound: 'wrong sound',
-  late_correct: 'late · right',
-  late_wrong: 'late · wrong',
-  miss: 'miss',
-  mistake: 'mistake',
+/** Per-outcome message keys used in the summary breakdown. */
+const OUTCOME_KEYS: Record<Outcome, 'practice.outcome.perfect' | 'practice.outcome.good' | 'practice.outcome.wrong_sound' | 'practice.outcome.late_correct' | 'practice.outcome.late_wrong' | 'practice.outcome.miss' | 'practice.outcome.mistake'> = {
+  perfect: 'practice.outcome.perfect',
+  good: 'practice.outcome.good',
+  wrong_sound: 'practice.outcome.wrong_sound',
+  late_correct: 'practice.outcome.late_correct',
+  late_wrong: 'practice.outcome.late_wrong',
+  miss: 'practice.outcome.miss',
+  mistake: 'practice.outcome.mistake',
 };
 
 const OUTCOME_ORDER: Outcome[] = [
@@ -92,6 +93,7 @@ type DisplayMode = 'linear' | 'circular';
 export function Practice() {
   const search = useSearch();
   const [, navigate] = useLocation();
+  const { t } = useI18n();
   const { toque, bpm: initialBpm } = useMemo(() => parseParams(search), [search]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -561,8 +563,8 @@ export function Practice() {
               onClick={() => changeBpm(-BPM_STEP)}
               disabled={bpm <= GLOBAL_BPM_RANGE[0]}
               className="w-7 h-7 flex items-center justify-center text-text-dim hover:text-text disabled:opacity-30"
-              title="Slower (−)"
-              aria-label="Slower"
+              title={t('practice.slower')}
+              aria-label={t('practice.slower')}
             >
               −
             </button>
@@ -574,8 +576,8 @@ export function Practice() {
               onClick={() => changeBpm(BPM_STEP)}
               disabled={bpm >= GLOBAL_BPM_RANGE[1]}
               className="w-7 h-7 flex items-center justify-center text-text-dim hover:text-text disabled:opacity-30"
-              title="Faster (=)"
-              aria-label="Faster"
+              title={t('practice.faster')}
+              aria-label={t('practice.faster')}
             >
               +
             </button>
@@ -591,7 +593,11 @@ export function Practice() {
           onClick={toggleDisplayMode}
           className="w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border border-border text-text-dim hover:text-text transition"
           title={`Switch to ${displayMode === 'circular' ? 'linear' : 'circular'} layout`}
-          aria-label={`Switch to ${displayMode === 'circular' ? 'linear' : 'circular'} layout`}
+          aria-label={
+            displayMode === 'circular'
+              ? t('practice.switch_to_linear')
+              : t('practice.switch_to_circular')
+          }
         >
           <DisplayModeIcon mode={displayMode} />
         </button>
@@ -602,8 +608,8 @@ export function Practice() {
             className={`w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border text-sm transition ${
               metronomeOn ? 'border-accent text-accent' : 'border-border text-text-dim hover:text-text'
             }`}
-            title={`Metronome ${metronomeOn ? 'on' : 'off'}`}
-            aria-label={`Metronome ${metronomeOn ? 'on' : 'off'}`}
+            title={metronomeOn ? t('practice.metronome_on') : t('practice.metronome_off')}
+            aria-label={metronomeOn ? t('practice.metronome_on') : t('practice.metronome_off')}
             aria-pressed={metronomeOn}
           >
             <MetronomeIcon on={metronomeOn} />
@@ -614,13 +620,13 @@ export function Practice() {
             type="button"
             onClick={pauseNow}
             className="px-3 py-1.5 rounded-full bg-bg-elev/80 backdrop-blur text-text text-sm border border-border hover:border-border-strong transition"
-            title="Pause (space)"
+            title={t('practice.pause_title')}
           >
-            Pause
+            {t('practice.pause')}
           </button>
         )}
         <Link href="/" className="btn-ghost">
-          ← Back
+          {t('common.back')}
         </Link>
       </div>
 
@@ -631,18 +637,17 @@ export function Practice() {
               <>
                 <h2 className="text-xl font-semibold">{toque.name}</h2>
                 <p className="text-text-dim text-sm text-center">
-                  This toque's pattern isn't locked in yet — coming soon.
+                  {t('practice.coming_soon_body')}
                 </p>
                 <Link href="/" className="btn-primary">
-                  Back to home
+                  {t('practice.back_home')}
                 </Link>
               </>
             ) : (
               <>
-                <h2 className="text-xl font-semibold">Ready?</h2>
+                <h2 className="text-xl font-semibold">{t('practice.ready')}</h2>
                 <p className="text-text-dim text-sm text-center">
-                  Playing <span className="text-text">{toque.name}</span> at{' '}
-                  <span className="font-mono">{bpm} bpm</span>.
+                  {t('practice.playing_at', { toque: toque.name, bpm })}
                 </p>
                 <PatternPreview toque={toque} cellSize="compact" />
                 <div className="flex flex-col items-stretch gap-2 w-full">
@@ -652,16 +657,16 @@ export function Practice() {
                     disabled={status === 'starting'}
                     className="px-6 py-2 rounded-full bg-accent text-bg font-semibold disabled:opacity-60"
                   >
-                    {status === 'starting' ? 'Starting…' : 'Start microphone'}
+                    {status === 'starting' ? t('practice.starting') : t('practice.start_mic')}
                   </button>
                   <button
                     type="button"
                     onClick={handleStartKeyboard}
                     disabled={status === 'starting'}
                     className="px-6 py-2 rounded-full bg-bg border border-border text-text-dim hover:text-text disabled:opacity-60"
-                    title="Use the number keys 1 / 2 / 3 as DONG / TCH / DING"
+                    title={t('practice.keyboard_mode_hint')}
                   >
-                    Try keyboard mode
+                    {t('practice.try_keyboard')}
                   </button>
                 </div>
                 {errorMsg && <p className="text-sm text-red-400 text-center">{errorMsg}</p>}
@@ -687,6 +692,7 @@ export function Practice() {
           onResume={resumeNow}
           onRestart={restartNow}
           onEnd={endSession}
+          t={t}
         />
       )}
     </main>
@@ -1353,11 +1359,13 @@ function SummaryOverlay({
   onResume,
   onRestart,
   onEnd,
+  t,
 }: {
   summary: SessionSummary;
   onResume: () => void;
   onRestart: () => void;
   onEnd: () => void;
+  t: TFn;
 }) {
   const minutes = Math.floor(summary.elapsedSec / 60);
   const seconds = Math.floor(summary.elapsedSec % 60);
@@ -1366,20 +1374,23 @@ function SummaryOverlay({
     <div className="absolute inset-0 flex items-center justify-center bg-bg/75 backdrop-blur-sm px-4">
       <div className="flex flex-col gap-5 px-6 py-6 rounded-2xl bg-bg-elev border border-border w-full max-w-md">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-xl font-semibold">Paused</h2>
+          <h2 className="text-xl font-semibold">{t('practice.summary_paused')}</h2>
           <span className="text-xs text-text-dim font-mono">
-            {minutes}:{String(seconds).padStart(2, '0')} active
+            {t('practice.summary_active', {
+              minutes,
+              seconds: String(seconds).padStart(2, '0'),
+            })}
           </span>
         </div>
 
         <div className="grid grid-cols-3 gap-3 text-center">
-          <Stat label="Accuracy" value={`${Math.round(summary.accuracy * 100)}%`} />
-          <Stat label="Beats" value={String(summary.totalScoredBeats)} />
-          <Stat label="Best streak" value={String(summary.bestStreak)} />
+          <Stat label={t('practice.summary_accuracy')} value={`${Math.round(summary.accuracy * 100)}%`} />
+          <Stat label={t('practice.summary_beats')} value={String(summary.totalScoredBeats)} />
+          <Stat label={t('practice.summary_best_streak')} value={String(summary.bestStreak)} />
         </div>
 
-        <OutcomeBreakdown counts={summary.outcomeCounts} />
-        <PerSoundBreakdown perSound={summary.perSound} />
+        <OutcomeBreakdown counts={summary.outcomeCounts} t={t} />
+        <PerSoundBreakdown perSound={summary.perSound} t={t} />
 
         <div className="flex flex-wrap gap-2 pt-1">
           <button
@@ -1387,25 +1398,25 @@ function SummaryOverlay({
             onClick={onResume}
             className="flex-1 px-4 py-2 rounded-full bg-accent text-bg font-semibold"
           >
-            Resume
+            {t('practice.resume')}
           </button>
           <button
             type="button"
             onClick={onRestart}
             className="flex-1 px-4 py-2 rounded-full bg-bg border border-border text-text"
           >
-            Restart
+            {t('practice.restart')}
           </button>
           <button
             type="button"
             onClick={onEnd}
             className="flex-1 px-4 py-2 rounded-full bg-bg border border-border text-text-dim"
           >
-            End session
+            {t('practice.end_session')}
           </button>
         </div>
         <p className="text-[10px] text-text-dim text-center -mt-2">
-          press space to resume
+          {t('practice.summary_resume_hint')}
         </p>
       </div>
     </div>
@@ -1421,10 +1432,14 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function OutcomeBreakdown({ counts }: { counts: Record<Outcome, number> }) {
+function OutcomeBreakdown({ counts, t }: { counts: Record<Outcome, number>; t: TFn }) {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   if (total === 0) {
-    return <p className="text-xs text-text-dim text-center">No beats scored yet.</p>;
+    return (
+      <p className="text-xs text-text-dim text-center">
+        {t('practice.summary_no_beats')}
+      </p>
+    );
   }
   return (
     <div className="flex flex-col gap-1">
@@ -1437,7 +1452,7 @@ function OutcomeBreakdown({ counts }: { counts: Record<Outcome, number> }) {
             <div
               key={key}
               style={{ width: `${pct}%`, background: OUTCOME_COLORS[key] }}
-              title={`${OUTCOME_LABELS[key]}: ${n}`}
+              title={`${t(OUTCOME_KEYS[key])}: ${n}`}
             />
           );
         })}
@@ -1449,7 +1464,7 @@ function OutcomeBreakdown({ counts }: { counts: Record<Outcome, number> }) {
               className="w-2 h-2 rounded-full shrink-0"
               style={{ background: OUTCOME_COLORS[key] }}
             />
-            <span>{OUTCOME_LABELS[key]}</span>
+            <span>{t(OUTCOME_KEYS[key])}</span>
             <span className="ml-auto font-mono text-text">{counts[key]}</span>
           </div>
         ))}
@@ -1460,13 +1475,17 @@ function OutcomeBreakdown({ counts }: { counts: Record<Outcome, number> }) {
 
 function PerSoundBreakdown({
   perSound,
+  t,
 }: {
   perSound: Record<'dong' | 'ch' | 'ding', number | null>;
+  t: TFn;
 }) {
   const rows: Array<'dong' | 'ch' | 'ding'> = ['dong', 'ch', 'ding'];
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-wider text-text-dim">Per sound</span>
+      <span className="text-[10px] uppercase tracking-wider text-text-dim">
+        {t('practice.summary_per_sound')}
+      </span>
       <div className="grid grid-cols-3 gap-2">
         {rows.map((s) => {
           const v = perSound[s];
