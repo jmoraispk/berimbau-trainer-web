@@ -18,6 +18,17 @@ export interface CalibrationSample {
   centroid: number;
   /** Wall-clock timestamp when the sample was captured — useful for UI ordering. */
   at: number;
+  /** RMS at the strike — surfaced in tooltips, not used in the profile. */
+  rms?: number;
+  /**
+   * Raw mono PCM around the onset (50 ms pre + 450 ms post). Stored only
+   * during the calibration session for thumbnail rendering and playback;
+   * never serialised to IDB (the Saved profile is just the Gaussians).
+   */
+  segment?: Float32Array;
+  sampleRate?: number;
+  /** Seconds of pre-onset audio at the start of `segment`. */
+  preSec?: number;
 }
 
 const F0_STD_MIN = 15;

@@ -37,9 +37,12 @@ import { DEFAULT_PROFILES } from '@/engine/profiles';
 const workletUrl = '/audio/onset-worklet.js';
 
 interface OnsetMessage {
-  type: 'onset';
+  type: 'onsetQuick' | 'onsetFull';
   timestamp: number;
+  /** Seconds of pre-onset audio at the start of `segment`. */
+  preSec: number;
   segment: Float32Array;
+  sampleRate: number;
   rms: number;
   baseline: number;
 }
@@ -93,7 +96,20 @@ export class AudioInput {
     const source = this.context.createMediaStreamSource(this.stream);
     this.workletNode = new AudioWorkletNode(this.context, 'onset-processor');
     this.workletNode.port.onmessage = (ev: MessageEvent<OnsetMessage>) => {
-      this.handleOnset(ev.data);
+      const msg = ev.data;
+      if (msg.type === 'onsetQuick') {
+        this.handleOnset(msg);
+      } else if (msg.type === 'onsetFull' && audioBus.hasRawListeners()) {
+        // Only ship the full segment when something is listening — keeps
+        // the per-frame transfer cost zero during ordinary practice.
+        audioBus.pushRawCapture({
+          timestamp: msg.timestamp,
+          preSec: msg.preSec,
+          segment: msg.segment,
+          sampleRate: msg.sampleRate,
+          rms: msg.rms,
+        });
+      }
     };
     source.connect(this.workletNode);
     // Worklet doesn't need to reach the destination — we only want its
@@ -162,9 +178,7 @@ export class AudioInput {
   }
 
   private handleOnset(msg: OnsetMessage): void {
-    if (msg.type !== 'onset') return;
-    const sampleRate = this.context?.sampleRate ?? 44100;
-    const features = extractFeatures(msg.segment, sampleRate);
+    const features = extractFeatures(msg.segment, msg.sampleRate);
     const classification = classify(features.f0, features.centroid, this.profiles);
 
     const bleed = msg.timestamp - this.lastOnsetAt < BLEED_GAP_SEC;

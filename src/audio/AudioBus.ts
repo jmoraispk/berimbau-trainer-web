@@ -23,11 +23,30 @@ export type AudioBusEvent =
 
 export type AudioBusListener = (event: AudioBusEvent) => void;
 
+/**
+ * A 'full' onset capture sent only when something subscribes via
+ * subscribeRawCapture — the calibration UI uses this for waveform
+ * thumbnails + playback. Practice never reads it.
+ */
+export interface RawCapture {
+  /** AudioContext time when the strike was detected. */
+  timestamp: number;
+  /** Seconds of pre-onset audio at the start of `segment`. */
+  preSec: number;
+  /** Mono PCM, sampled at `sampleRate`. */
+  segment: Float32Array;
+  sampleRate: number;
+  rms: number;
+}
+
+export type RawCaptureListener = (capture: RawCapture) => void;
+
 export class AudioBus {
   /** Ring buffer of recently detected notes, read imperatively by the canvas loop. */
   readonly recentNotes: DetectedNote[] = [];
   private readonly maxNotes = 256;
   private readonly listeners = new Set<AudioBusListener>();
+  private readonly rawListeners = new Set<RawCaptureListener>();
 
   /** Subscribe to coarse events. Use sparingly — never per-frame data. */
   subscribe(listener: AudioBusListener): () => void {
@@ -35,11 +54,30 @@ export class AudioBus {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Subscribe to raw 'full' captures (50ms pre + 450ms post-onset audio).
+   * Returns whether anyone is listening so AudioInput can skip emitting
+   * when nothing cares — keeps the audio→main hop cheap during normal
+   * Practice. The Calibrate route is the only current consumer.
+   */
+  subscribeRawCapture(listener: RawCaptureListener): () => void {
+    this.rawListeners.add(listener);
+    return () => this.rawListeners.delete(listener);
+  }
+
+  hasRawListeners(): boolean {
+    return this.rawListeners.size > 0;
+  }
+
   /** Called by the worklet adapter when a note is detected. */
   pushNote(note: DetectedNote): void {
     this.recentNotes.push(note);
     if (this.recentNotes.length > this.maxNotes) this.recentNotes.shift();
     this.emit({ type: 'note', note });
+  }
+
+  pushRawCapture(capture: RawCapture): void {
+    for (const l of this.rawListeners) l(capture);
   }
 
   emit(event: AudioBusEvent): void {

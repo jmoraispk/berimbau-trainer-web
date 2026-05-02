@@ -1,17 +1,20 @@
 /**
  * Onset-detection AudioWorklet (plain JS, served from public/ as-is).
  *
- * Runs on the audio thread with 128-sample quanta. Maintains a ring buffer
- * of recent audio. Per block:
+ * Two-message protocol per onset:
  *
- *   1. Compute block RMS.
- *   2. Update a slow moving-average baseline (EMA).
- *   3. If block RMS > baseline * RATIO AND above an absolute floor AND
- *      past MIN_GAP_SEC since last onset: fire an onset, slice a ~150ms
- *      segment, postMessage it (with transfer) to the main thread.
+ *   - 'onsetQuick' fires ~80ms after the strike. Includes 20ms pre + 80ms
+ *     post-onset audio. The main thread classifies on this short window
+ *     (attack + early sustain) so live scoring stays responsive.
  *
- * Feature extraction and classification run on the main thread so the
- * worklet stays small and the classifier can be swapped without reload.
+ *   - 'onsetFull' fires ~450ms after the same strike. Includes 50ms pre +
+ *     450ms post-onset audio. Used by Calibrate for waveform thumbnails
+ *     and playback. Practice mode ignores it.
+ *
+ * Both messages share the same `timestamp` (the onset moment), so the
+ * main thread can correlate them if it ever needs to. Multiple captures
+ * can be pending simultaneously — a fast tch_tch fires two onsets within
+ * 200ms, both of which need to be reported.
  *
  * NOTE: Kept as plain .js (not .ts) in public/ so both Vite dev and prod
  * serve it verbatim. Vite's worker transform injects HMR client imports
@@ -22,13 +25,26 @@ const MIN_GAP_SEC = 0.08;
 const ABS_FLOOR = 0.01;
 const RATIO = 2.2;
 const BASELINE_TAU_SEC = 0.5;
-const SEGMENT_SEC = 0.15;
-const PRE_SEC = 0.02;
+
+// Quick capture: low-latency, used by Practice for live scoring.
+const QUICK_PRE_SEC = 0.02;
+const QUICK_POST_SEC = 0.08;
+const QUICK_TOTAL_SEC = QUICK_PRE_SEC + QUICK_POST_SEC;
+
+// Full capture: longer, used by Calibrate for thumbnails + playback.
+const FULL_PRE_SEC = 0.05;
+const FULL_POST_SEC = 0.45;
+const FULL_TOTAL_SEC = FULL_PRE_SEC + FULL_POST_SEC;
+
+// Ring sized to hold the longest-pending capture's full span plus a
+// little headroom. 1 second is plenty.
+const RING_SEC = 1.0;
+const MAX_PENDING = 4;
 
 class OnsetProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    const ringSize = Math.max(Math.ceil(sampleRate * 0.4), 4096);
+    const ringSize = Math.max(Math.ceil(sampleRate * RING_SEC), 4096);
     this.ring = new Float32Array(ringSize);
     this.write = 0;
     this.filled = 0;
@@ -36,6 +52,8 @@ class OnsetProcessor extends AudioWorkletProcessor {
     this.lastOnsetT = -Infinity;
     const blockDt = 128 / sampleRate;
     this.emaAlpha = 1 - Math.exp(-blockDt / BASELINE_TAU_SEC);
+    /** @type {Array<{kind:'quick'|'full', onsetTime:number, sampleCount:number, samplesNeeded:number, rms:number, baseline:number}>} */
+    this.pending = [];
   }
 
   process(inputs) {
@@ -52,6 +70,22 @@ class OnsetProcessor extends AudioWorkletProcessor {
     }
     this.filled = Math.min(this.filled + channel.length, ringSize);
 
+    // Tick every pending capture; ship and remove ones whose post-onset
+    // window has elapsed.
+    if (this.pending.length > 0) {
+      const next = [];
+      for (const p of this.pending) {
+        p.sampleCount += channel.length;
+        if (p.sampleCount >= p.samplesNeeded) {
+          this.shipCapture(p);
+        } else {
+          next.push(p);
+        }
+      }
+      this.pending = next;
+    }
+
+    // Block RMS + baseline.
     let s = 0;
     for (let i = 0; i < channel.length; i++) s += channel[i] * channel[i];
     const blockRms = Math.sqrt(s / channel.length);
@@ -59,14 +93,42 @@ class OnsetProcessor extends AudioWorkletProcessor {
     if (this.baseline === 0) this.baseline = blockRms;
     else this.baseline += this.emaAlpha * (blockRms - this.baseline);
 
+    // Onset detection.
     if (blockRms < ABS_FLOOR) return true;
     if (blockRms < this.baseline * RATIO) return true;
     if (currentTime - this.lastOnsetT < MIN_GAP_SEC) return true;
+    if (this.pending.length >= MAX_PENDING * 2) return true; // safety valve
 
     this.lastOnsetT = currentTime;
 
-    const segLen = Math.min(Math.ceil(sampleRate * SEGMENT_SEC), this.filled);
+    const onsetTime = currentTime; // moment the spike crossed the threshold
+    this.pending.push({
+      kind: 'quick',
+      onsetTime,
+      sampleCount: 0,
+      samplesNeeded: Math.ceil(QUICK_POST_SEC * sampleRate),
+      rms: blockRms,
+      baseline: this.baseline,
+    });
+    this.pending.push({
+      kind: 'full',
+      onsetTime,
+      sampleCount: 0,
+      samplesNeeded: Math.ceil(FULL_POST_SEC * sampleRate),
+      rms: blockRms,
+      baseline: this.baseline,
+    });
+
+    return true;
+  }
+
+  shipCapture(p) {
+    const totalSec = p.kind === 'quick' ? QUICK_TOTAL_SEC : FULL_TOTAL_SEC;
+    const preSec = p.kind === 'quick' ? QUICK_PRE_SEC : FULL_PRE_SEC;
+    const segLen = Math.min(Math.ceil(sampleRate * totalSec), this.filled);
     const segment = new Float32Array(segLen);
+    const ring = this.ring;
+    const ringSize = ring.length;
     const readStart = (this.write - segLen + ringSize) % ringSize;
     if (readStart + segLen <= ringSize) {
       segment.set(ring.subarray(readStart, readStart + segLen));
@@ -78,16 +140,16 @@ class OnsetProcessor extends AudioWorkletProcessor {
 
     this.port.postMessage(
       {
-        type: 'onset',
-        timestamp: currentTime - PRE_SEC,
+        type: p.kind === 'quick' ? 'onsetQuick' : 'onsetFull',
+        timestamp: p.onsetTime,
+        preSec,
         segment,
-        rms: blockRms,
-        baseline: this.baseline,
+        sampleRate,
+        rms: p.rms,
+        baseline: p.baseline,
       },
       [segment.buffer],
     );
-
-    return true;
   }
 }
 
