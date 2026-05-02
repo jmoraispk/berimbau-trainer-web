@@ -19,7 +19,7 @@ function makeSession(overrides: Partial<SessionRecord> = {}): Omit<SessionRecord
     accuracy: 0.8,
     totalScoredBeats: 10,
     bestStreak: 3,
-    outcomeCounts: { perfect: 4, good: 3, wrong_sound: 1, late: 1, miss: 1, mistake: 0 },
+    outcomeCounts: { perfect: 4, good: 3, wrong_sound: 1, late_correct: 0, late_wrong: 1, miss: 1, mistake: 0 },
     perSound: { dong: 0.9, ch: 0.7, ding: 0.8 },
     ...overrides,
   };

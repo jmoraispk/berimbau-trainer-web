@@ -18,21 +18,29 @@
 import type { Sound } from './rhythms';
 
 export const TIMING_TOLERANCE_SEC = 0.08;
-export const LATE_ZONE_SEC = 0.15;
+export const LATE_ZONE_SEC = 0.25; // generous — beginners get partial credit
 
 export const SCORE_CORRECT_TIMING_CORRECT_SOUND = 1.0;
 export const SCORE_CORRECT_TIMING_WRONG_SOUND = 0.4;
-export const SCORE_LATE_HIT = 0.3;
+/**
+ * Right note, off-time. Worth more than wrong-sound-on-time because the
+ * sound match is the harder signal — the user identified the right
+ * gesture, just didn't sync it tightly.
+ */
+export const SCORE_LATE_CORRECT = 0.5;
+/** Wrong note AND off-time — token credit for at least playing something. */
+export const SCORE_LATE_WRONG = 0.2;
 export const SCORE_MISS = 0.0;
 export const SCORE_MISTAKE_PENALTY = -0.2;
 
 export type Outcome =
-  | 'perfect'
-  | 'good'
-  | 'wrong_sound'
-  | 'late'
-  | 'miss'
-  | 'mistake';
+  | 'perfect'      // tight timing + right sound
+  | 'good'         // within tolerance + right sound
+  | 'wrong_sound'  // tight timing, wrong sound
+  | 'late_correct' // outside tolerance but right sound — credit retained
+  | 'late_wrong'   // outside tolerance, wrong sound — token credit
+  | 'miss'         // never matched
+  | 'mistake';     // pitch glide / note bleed flagged by classifier
 
 export type DetectedSound = Sound | 'unknown';
 
@@ -127,9 +135,12 @@ export class ScoringEngine {
         score = SCORE_CORRECT_TIMING_WRONG_SOUND;
         outcome = 'wrong_sound';
       }
+    } else if (correctSound) {
+      score = SCORE_LATE_CORRECT;
+      outcome = 'late_correct';
     } else {
-      score = SCORE_LATE_HIT;
-      outcome = 'late';
+      score = SCORE_LATE_WRONG;
+      outcome = 'late_wrong';
     }
 
     return this.commit({
@@ -180,7 +191,14 @@ export class ScoringEngine {
       if (r.targetSound && r.targetSound in counts) {
         const key = r.targetSound as 'dong' | 'ch' | 'ding';
         counts[key][1] += 1;
-        if (r.outcome === 'perfect' || r.outcome === 'good') {
+        // late_correct still counted as a "right note" hit for per-sound
+        // accuracy — they identified the gesture, even if the timing
+        // was off.
+        if (
+          r.outcome === 'perfect' ||
+          r.outcome === 'good' ||
+          r.outcome === 'late_correct'
+        ) {
           counts[key][0] += 1;
         }
       }

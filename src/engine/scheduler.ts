@@ -1,70 +1,106 @@
 /**
  * ToqueScheduler — enumerate target beats for a toque at a given BPM.
  *
- *   - BPM is per quarter note (4 subdivisions per beat), matching v1 where
- *     cycle_beats = 4 and subdivisions = 16.
- *   - A single cycle is `(subdivisions / 4) * 60/bpm` seconds long.
- *   - Each pattern entry with sound !== 'rest' is a target beat. Rests are
- *     skipped — scoring only cares about notes to play.
+ *   - intervalDuration = 60 / bpm   (one quarter note at the chosen tempo)
+ *   - cycleDuration    = intervalDuration * intervals.length
  *
- * The scheduler is stateless: give it a window [fromT, toT] in seconds
- * (audio-context time) and it returns every target beat whose beatTime
- * falls in that window. The caller tracks which beats have already been
- * registered with the ScoringEngine to avoid duplicates.
+ * Each interval token is expanded into 0, 1, or 2 TargetBeats:
+ *
+ *     'rest'    → no beats
+ *     'dong'    → one beat at offset 0 within the interval
+ *     'ding'    → one beat at offset 0
+ *     'tch'     → one beat at offset 0
+ *     'tch_tch' → two beats at offsets 0 and 0.5 (two eighths in the beat)
+ *
+ * Stateless: give it a window [fromT, toT] in seconds (audio-context time)
+ * and it returns every target beat with `fromT <= beatTime <= toT`.
+ * Caller deduplicates by `id`.
  */
 
-import type { BeatEvent, ToquePattern, Sound } from './rhythms';
-import { GLOBAL_BPM_RANGE } from './rhythms';
+import type { IntervalToken, Sound, ToquePattern } from './rhythms';
+import { GLOBAL_BPM_RANGE, soundFromToken } from './rhythms';
 
 export interface TargetBeat {
-  /** Global beat index since startTime — unique, monotonic. */
+  /** Globally-monotonic beat index. */
   id: number;
-  /** 0..subdivisions-1 within the cycle. */
+  /** Index into the toque's intervals[] array (0..length-1). */
+  intervalIndex: number;
+  /** 0 for the only beat in single-sound intervals, 0 or 1 within tch_tch. */
+  subIndex: number;
+  /** Used by ScoringEngine for matching — encodes (intervalIndex, subIndex). */
   step: number;
   /** Which cycle this came from (0, 1, 2, ...). */
   cycle: number;
-  /** AudioContext time (seconds) when the beat should land on the hit line. */
+  /** AudioContext time (seconds) when the beat lands on the hit line. */
   beatTime: number;
-  sound: Exclude<Sound, 'rest'>;
-  accent: BeatEvent['accent'];
+  sound: Sound;
+  /** Whether this beat sits on a downbeat (interval start), used for rendering. */
+  accent: boolean;
 }
 
 export interface SchedulerOptions {
   toque: ToquePattern;
   /** Quarter-note BPM; clamped to GLOBAL_BPM_RANGE by the caller. */
   bpm: number;
-  /** AudioContext time (seconds) when cycle 0, step 0 lands on the hit line. */
+  /** AudioContext time (seconds) when interval 0 starts. */
   startTime: number;
+}
+
+/** Steps per interval — the maximum number of sub-beats any token can emit. */
+const STEPS_PER_INTERVAL = 2;
+
+interface ExpandedEvent {
+  subIndex: number;
+  /** Offset within the interval, in [0, 1). */
+  offset: number;
+  sound: Sound;
+  accent: boolean;
+}
+
+function expand(token: IntervalToken): ExpandedEvent[] {
+  switch (token) {
+    case 'rest':
+      return [];
+    case 'tch_tch':
+      return [
+        { subIndex: 0, offset: 0,   sound: 'ch', accent: true  },
+        { subIndex: 1, offset: 0.5, sound: 'ch', accent: false },
+      ];
+    case 'tch':
+      return [{ subIndex: 0, offset: 0, sound: 'ch', accent: true }];
+    default:
+      return [{ subIndex: 0, offset: 0, sound: soundFromToken(token), accent: true }];
+  }
 }
 
 export class ToqueScheduler {
   private readonly options: SchedulerOptions;
-  private readonly playableSteps: BeatEvent[];
-  private readonly stepDuration: number;
+  private readonly intervalDuration: number;
   private readonly cycleDuration: number;
+  /** Pre-computed events for one cycle, in chronological order. */
+  private readonly events: ExpandedEvent[][];
+  private readonly intervalLength: number;
 
   constructor(options: SchedulerOptions) {
     this.options = options;
     const { toque, bpm } = options;
-    // One quarter note = 60/bpm seconds. Each subdivision is a quarter of
-    // that, matching v1's 16-steps-over-4-beats layout.
-    this.stepDuration = 60 / bpm / (toque.subdivisions / toque.cycleBeats);
-    this.cycleDuration = this.stepDuration * toque.subdivisions;
-    this.playableSteps = toque.pattern.filter((e) => e.sound !== 'rest');
+    this.intervalLength = toque.intervals.length;
+    this.intervalDuration = 60 / bpm;
+    this.cycleDuration = this.intervalDuration * this.intervalLength;
+    this.events = toque.intervals.map(expand);
   }
 
-  /** Seconds per full cycle. */
+  /** Seconds per full cycle (0 if the toque has no intervals). */
   get cycleSeconds(): number {
     return this.cycleDuration;
   }
 
   /**
-   * Every target beat with `fromT <= beatTime <= toT`, in chronological order.
-   *
-   * The window is inclusive on both ends so a beat exactly on `toT` is
-   * emitted once rather than missed; the caller deduplicates by `id`.
+   * Every target beat with `fromT <= beatTime <= toT`, in chronological
+   * order. The window is inclusive on both ends.
    */
   beatsInWindow(fromT: number, toT: number): TargetBeat[] {
+    if (this.intervalLength === 0 || this.cycleDuration <= 0) return [];
     if (toT < fromT) return [];
     const { startTime } = this.options;
 
@@ -74,17 +110,25 @@ export class ToqueScheduler {
     const out: TargetBeat[] = [];
     for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
       const cycleStart = startTime + cycle * this.cycleDuration;
-      for (const event of this.playableSteps) {
-        const beatTime = cycleStart + event.step * this.stepDuration;
-        if (beatTime < fromT || beatTime > toT) continue;
-        out.push({
-          id: cycle * this.options.toque.subdivisions + event.step,
-          step: event.step,
-          cycle,
-          beatTime,
-          sound: event.sound as Exclude<Sound, 'rest'>,
-          accent: event.accent,
-        });
+      for (let intervalIndex = 0; intervalIndex < this.intervalLength; intervalIndex++) {
+        const events = this.events[intervalIndex]!;
+        if (events.length === 0) continue;
+        const intervalStart = cycleStart + intervalIndex * this.intervalDuration;
+        for (const event of events) {
+          const beatTime = intervalStart + event.offset * this.intervalDuration;
+          if (beatTime < fromT || beatTime > toT) continue;
+          const step = intervalIndex * STEPS_PER_INTERVAL + event.subIndex;
+          out.push({
+            id: cycle * this.intervalLength * STEPS_PER_INTERVAL + step,
+            intervalIndex,
+            subIndex: event.subIndex,
+            step,
+            cycle,
+            beatTime,
+            sound: event.sound,
+            accent: event.accent,
+          });
+        }
       }
     }
     return out;
@@ -93,8 +137,8 @@ export class ToqueScheduler {
 
 /**
  * Clamp a BPM request into GLOBAL_BPM_RANGE. Accepts a toque for callsite
- * symmetry but ignores the toque's traditional range — every toque is
- * rehearsable at any tempo the global range permits.
+ * symmetry but ignores the toque's defaultBpm — every toque is rehearsable
+ * at any tempo the global range permits.
  */
 export function clampBpm(_toque: ToquePattern | null | undefined, bpm: number): number {
   const [lo, hi] = GLOBAL_BPM_RANGE;

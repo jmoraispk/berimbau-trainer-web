@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import {
+  DIFFICULTY_LABELS,
   GLOBAL_BPM_RANGE,
-  TOQUES,
   SOUND_COLORS,
+  SOUND_GLYPHS,
   SOUND_LABELS,
-  type ToqueName,
+  TOQUES,
+  toquesByDifficulty,
+  type IntervalToken,
   type Sound,
+  type ToqueName,
+  type ToquePattern,
 } from '@/engine/rhythms';
 import { preloadActiveProfiles } from '@/audio/active-profiles';
 import type { SavedCalibration } from '@/engine/calibration';
@@ -15,7 +20,6 @@ import type { SessionRecord } from '@/engine/session';
 import { streakDays } from '@/engine/session';
 
 const SOUNDS: Sound[] = ['dong', 'ch', 'ding'];
-const TOQUE_NAMES = Object.keys(TOQUES) as ToqueName[];
 
 export function Home() {
   const [, navigate] = useLocation();
@@ -43,9 +47,14 @@ export function Home() {
     setBpm(TOQUES[name].defaultBpm);
   };
 
-  const preview = useMemo(() => toque.pattern, [toque]);
+  const groups = useMemo(() => toquesByDifficulty(), []);
+  const totalToques = useMemo(
+    () => Object.values(TOQUES).filter((t) => !t.comingSoon).length,
+    [],
+  );
 
   const start = () => {
+    if (toque.comingSoon) return;
     const params = new URLSearchParams({ toque: toqueName, bpm: String(bpm) });
     navigate(`/practice?${params.toString()}`);
   };
@@ -89,14 +98,8 @@ export function Home() {
 
       <section className="w-full grid grid-cols-3 gap-2">
         {SOUNDS.map((s) => (
-          <div key={s} className="card flex flex-col items-center gap-1 px-3 py-3">
-            <div
-              className="w-8 h-8 rounded-full shadow-inner"
-              style={{
-                background: SOUND_COLORS[s],
-                boxShadow: `0 0 24px -4px ${SOUND_COLORS[s]}55`,
-              }}
-            />
+          <div key={s} className="card flex flex-col items-center gap-1.5 px-3 py-3">
+            <SoundSymbol sound={s} size={36} />
             <div className="text-[11px] font-semibold tracking-[0.15em]">
               {SOUND_LABELS[s]}
             </div>
@@ -106,20 +109,41 @@ export function Home() {
 
       <section className="w-full flex flex-col gap-3">
         <SectionLabel>Toque</SectionLabel>
-        <div className="flex flex-wrap gap-2">
-          {TOQUE_NAMES.map((name) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => onPickToque(name)}
-              className={`px-3.5 py-1.5 rounded-full text-sm border transition ${
-                name === toqueName
-                  ? 'bg-accent text-bg border-accent shadow-[0_4px_16px_-6px_rgba(255,138,61,0.5)]'
-                  : 'bg-bg-elev text-text border-border hover:border-border-strong'
-              }`}
-            >
-              {name}
-            </button>
+        <div className="flex flex-col gap-3">
+          {groups.map((group) => (
+            <div key={group.difficulty} className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-mono text-text-dim/70 tracking-[0.18em] uppercase">
+                {DIFFICULTY_LABELS[group.difficulty]}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {group.toques.map((t) => {
+                  const active = t.name === toqueName;
+                  const disabled = !!t.comingSoon;
+                  return (
+                    <button
+                      key={t.name}
+                      type="button"
+                      onClick={() => !disabled && onPickToque(t.name)}
+                      disabled={disabled}
+                      className={`px-3.5 py-1.5 rounded-full text-sm border transition ${
+                        active && !disabled
+                          ? 'bg-accent text-bg border-accent shadow-[0_4px_16px_-6px_rgba(255,138,61,0.5)]'
+                          : disabled
+                          ? 'bg-bg-elev/40 text-text-dim/60 border-border/60 cursor-not-allowed'
+                          : 'bg-bg-elev text-text border-border hover:border-border-strong'
+                      }`}
+                    >
+                      {t.name}
+                      {disabled && (
+                        <span className="ml-1.5 text-[10px] font-mono opacity-70">
+                          coming soon
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </div>
         <p className="text-xs text-text-dim">{toque.description}</p>
@@ -154,49 +178,19 @@ export function Home() {
         </div>
       </section>
 
-      <section className="w-full flex flex-col gap-2">
-        <SectionLabel>Pattern</SectionLabel>
-        <div className="card p-2.5 flex flex-col gap-1.5">
-          <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1">
-            {preview.map((e) => (
-              <div
-                key={e.step}
-                className="aspect-square rounded-[4px] flex items-center justify-center text-[10px] font-bold"
-                style={{
-                  background: e.sound === 'rest' ? '#2a3048' : SOUND_COLORS[e.sound],
-                  color: e.sound === 'rest' ? '#4a5370' : '#0b0f1a',
-                  opacity: e.sound === 'rest' ? 0.5 : e.accent === 2 ? 1 : 0.75,
-                }}
-                title={`step ${e.step} · ${SOUND_LABELS[e.sound]}${e.accent === 2 ? ' (accent)' : ''}`}
-              >
-                {e.sound === 'rest' ? '' : SOUND_LABELS[e.sound][0]}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1 px-0">
-            {Array.from({ length: 16 }, (_, step) => (
-              <div
-                key={step}
-                className={`text-[9px] text-center font-mono ${
-                  step % 4 === 0 ? 'text-text-dim' : 'text-transparent'
-                }`}
-              >
-                {step % 4 === 0 ? (step / 4) + 1 : '·'}
-              </div>
-            ))}
-          </div>
-        </div>
-        <p className="text-[10px] text-text-dim">
-          16 steps over 2 bars · accented beats are fully saturated
-        </p>
-      </section>
+      <PatternPreview toque={toque} />
 
       <CalibrationCard calibration={calibration} />
 
       <RecentSessionsCard sessions={sessions} />
 
       <div className="flex flex-col items-center gap-3 w-full pt-2">
-        <button type="button" onClick={start} className="btn-primary px-10 py-3">
+        <button
+          type="button"
+          onClick={start}
+          disabled={toque.comingSoon}
+          className="btn-primary px-10 py-3"
+        >
           Start practicing
         </button>
         <Link
@@ -208,7 +202,7 @@ export function Home() {
       </div>
 
       <footer className="text-text-dim text-[10px] font-mono tracking-wider mt-auto">
-        {TOQUE_NAMES.length} toques · v2 · web
+        {totalToques} toques · v2 · web
       </footer>
     </main>
   );
@@ -219,6 +213,131 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
       {children}
     </h2>
+  );
+}
+
+/**
+ * SVG renderer for the three sound glyphs (× / ○ / ●). Used in the
+ * sound-key chips at the top of Home and in the pattern preview.
+ */
+function SoundSymbol({ sound, size = 32 }: { sound: Sound; size?: number }) {
+  const color = SOUND_COLORS[sound];
+  const stroke = Math.max(2, size * 0.16);
+  const r = size * 0.42;
+  const c = size / 2;
+  const filter = `drop-shadow(0 0 ${size * 0.6}px ${color}55)`;
+
+  if (sound === 'ch') {
+    const k = r * 0.78;
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ filter }}>
+        <line x1={c - k} y1={c - k} x2={c + k} y2={c + k} stroke={color} strokeWidth={stroke} strokeLinecap="round" />
+        <line x1={c + k} y1={c - k} x2={c - k} y2={c + k} stroke={color} strokeWidth={stroke} strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (sound === 'dong') {
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ filter }}>
+        <circle cx={c} cy={c} r={r} stroke={color} strokeWidth={stroke} fill="none" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ filter }}>
+      <circle cx={c} cy={c} r={r} fill={color} />
+    </svg>
+  );
+}
+
+/**
+ * Variable-length pattern preview — one card cell per beat (interval).
+ * tch_tch beats render two small × side-by-side; everything else is a
+ * single centered glyph; rests are dim placeholder cells.
+ */
+function PatternPreview({ toque }: { toque: ToquePattern }) {
+  if (toque.intervals.length === 0) {
+    return (
+      <section className="w-full flex flex-col gap-2">
+        <SectionLabel>Pattern</SectionLabel>
+        <div className="card p-6 text-center text-sm text-text-dim">
+          Pattern coming soon.
+        </div>
+      </section>
+    );
+  }
+  const cycleBeats = toque.intervals.length;
+  return (
+    <section className="w-full flex flex-col gap-2">
+      <SectionLabel>Pattern</SectionLabel>
+      <div className="card p-3 flex flex-col gap-2">
+        <div
+          className="grid gap-1.5"
+          style={{ gridTemplateColumns: `repeat(${cycleBeats}, minmax(0, 1fr))` }}
+        >
+          {toque.intervals.map((token, i) => (
+            <PatternCell key={i} token={token} accent={i === 0} />
+          ))}
+        </div>
+        <div
+          className="grid gap-1.5"
+          style={{ gridTemplateColumns: `repeat(${cycleBeats}, minmax(0, 1fr))` }}
+        >
+          {toque.intervals.map((_, i) => (
+            <div
+              key={i}
+              className="text-[9px] text-center font-mono text-text-dim tracking-wider"
+            >
+              {i + 1}
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="text-[10px] text-text-dim">
+        {cycleBeats}-beat cycle{cycleBeats === 8 ? ' (2 bars)' : ' (1 bar)'} ·{' '}
+        <span className="font-mono">×</span> chiado ·{' '}
+        <span className="font-mono">○</span> open (DONG) ·{' '}
+        <span className="font-mono">●</span> closed (DING)
+      </p>
+    </section>
+  );
+}
+
+function PatternCell({ token, accent }: { token: IntervalToken; accent: boolean }) {
+  if (token === 'rest') {
+    return (
+      <div className="aspect-square rounded-md bg-bg/60 border border-border/60 flex items-center justify-center text-text-dim/60 text-xs font-mono">
+        ·
+      </div>
+    );
+  }
+
+  const ringClass = accent
+    ? 'ring-2 ring-accent/30 ring-offset-1 ring-offset-bg-elev'
+    : '';
+
+  if (token === 'tch_tch') {
+    return (
+      <div
+        className={`aspect-square rounded-md bg-bg flex items-center justify-center gap-1 border border-border ${ringClass}`}
+      >
+        <SoundSymbol sound="ch" size={18} />
+        <SoundSymbol sound="ch" size={18} />
+      </div>
+    );
+  }
+
+  // Single-glyph cell. Map token to internal Sound for the glyph lookup.
+  const sound: Sound = token === 'tch' ? 'ch' : token;
+  // Show the glyph nice and big.
+  const _label = SOUND_GLYPHS[sound];
+  void _label;
+  return (
+    <div
+      className={`aspect-square rounded-md bg-bg flex items-center justify-center border border-border ${ringClass}`}
+    >
+      <SoundSymbol sound={sound} size={28} />
+    </div>
   );
 }
 

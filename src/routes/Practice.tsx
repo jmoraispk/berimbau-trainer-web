@@ -52,10 +52,32 @@ const OUTCOME_COLORS: Record<Outcome, string> = {
   perfect: '#64f08c',
   good: '#a7e87a',
   wrong_sound: '#f2b640',
-  late: '#e48140',
+  late_correct: '#a7e87a', // same green as 'good' — right note
+  late_wrong: '#e48140',   // amber/orange — at least played something
   miss: '#e2506c',
   mistake: '#8a93b0',
 };
+
+/** Display labels for the outcome ladder used in the HUD + summary. */
+const OUTCOME_LABELS: Record<Outcome, string> = {
+  perfect: 'perfect',
+  good: 'good',
+  wrong_sound: 'wrong sound',
+  late_correct: 'late · right',
+  late_wrong: 'late · wrong',
+  miss: 'miss',
+  mistake: 'mistake',
+};
+
+const OUTCOME_ORDER: Outcome[] = [
+  'perfect',
+  'good',
+  'late_correct',
+  'wrong_sound',
+  'late_wrong',
+  'miss',
+  'mistake',
+];
 
 type Status = 'idle' | 'starting' | 'running' | 'paused' | 'error';
 
@@ -335,7 +357,7 @@ export function Practice() {
             !tickedBeatsRef.current.has(beat.id) &&
             beat.beatTime - renderNow < METRONOME_LOOKAHEAD_SEC
           ) {
-            metronome.scheduleTick(beat.beatTime, beat.accent === 2);
+            metronome.scheduleTick(beat.beatTime, beat.accent);
             tickedBeatsRef.current.add(beat.id);
           }
           const x = hitX + (beat.beatTime - renderNow) * pxPerSec;
@@ -619,32 +641,46 @@ export function Practice() {
       {(status === 'idle' || status === 'starting' || status === 'error') && (
         <div className="absolute inset-0 flex items-center justify-center bg-bg/70 backdrop-blur-sm px-4">
           <div className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-bg-elev border border-border max-w-sm w-full">
-            <h2 className="text-xl font-semibold">Ready?</h2>
-            <p className="text-text-dim text-sm text-center">
-              Playing <span className="text-text">{toque.name}</span> at{' '}
-              <span className="font-mono">{bpm} bpm</span>. Start the mic to
-              play along, or use the keyboard to try without an instrument.
-            </p>
-            <div className="flex flex-col items-stretch gap-2 w-full">
-              <button
-                type="button"
-                onClick={handleStart}
-                disabled={status === 'starting'}
-                className="px-6 py-2 rounded-full bg-accent text-bg font-semibold disabled:opacity-60"
-              >
-                {status === 'starting' ? 'Starting…' : 'Start microphone'}
-              </button>
-              <button
-                type="button"
-                onClick={handleStartKeyboard}
-                disabled={status === 'starting'}
-                className="px-6 py-2 rounded-full bg-bg border border-border text-text-dim hover:text-text disabled:opacity-60"
-                title="Use the number keys 1 / 2 / 3 as DONG / TCH / DING"
-              >
-                Try keyboard mode
-              </button>
-            </div>
-            {errorMsg && <p className="text-sm text-red-400 text-center">{errorMsg}</p>}
+            {toque.comingSoon ? (
+              <>
+                <h2 className="text-xl font-semibold">{toque.name}</h2>
+                <p className="text-text-dim text-sm text-center">
+                  This toque's pattern isn't locked in yet — coming soon.
+                </p>
+                <Link href="/" className="btn-primary">
+                  Back to home
+                </Link>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-semibold">Ready?</h2>
+                <p className="text-text-dim text-sm text-center">
+                  Playing <span className="text-text">{toque.name}</span> at{' '}
+                  <span className="font-mono">{bpm} bpm</span>. Start the mic to
+                  play along, or use the keyboard to try without an instrument.
+                </p>
+                <div className="flex flex-col items-stretch gap-2 w-full">
+                  <button
+                    type="button"
+                    onClick={handleStart}
+                    disabled={status === 'starting'}
+                    className="px-6 py-2 rounded-full bg-accent text-bg font-semibold disabled:opacity-60"
+                  >
+                    {status === 'starting' ? 'Starting…' : 'Start microphone'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStartKeyboard}
+                    disabled={status === 'starting'}
+                    className="px-6 py-2 rounded-full bg-bg border border-border text-text-dim hover:text-text disabled:opacity-60"
+                    title="Use the number keys 1 / 2 / 3 as DONG / TCH / DING"
+                  >
+                    Try keyboard mode
+                  </button>
+                </div>
+                {errorMsg && <p className="text-sm text-red-400 text-center">{errorMsg}</p>}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -784,7 +820,7 @@ function drawTarget(
   outcome: (BeatResult & { at: number }) | undefined,
 ) {
   const color = SOUND_COLORS[beat.sound];
-  const r = beat.accent === 2 ? 16 : 12;
+  const r = beat.accent ? 18 : 14;
   const now = performance.now() / 1000;
 
   if (outcome) {
@@ -799,20 +835,53 @@ function drawTarget(
     ctx.globalAlpha = 1;
   }
 
-  ctx.fillStyle = color;
-  ctx.globalAlpha = outcome ? 0.35 : 0.9;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.globalAlpha = outcome ? 0.4 : 1;
+  drawSoundGlyph(ctx, beat.sound, x, y, r, color);
   ctx.globalAlpha = 1;
+}
 
-  ctx.fillStyle = '#0b0f1a';
-  ctx.font = `bold ${beat.accent === 2 ? 12 : 10}px ui-monospace, Consolas, monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(SOUND_LABELS[beat.sound], x, y);
-  ctx.textAlign = 'start';
-  ctx.textBaseline = 'alphabetic';
+/**
+ * Three glyphs encode the berimbau's sound classes:
+ *   ×  TCH  — chiado (coin muting the string)
+ *   ○  DONG — open string
+ *   ●  DING — closed string ("painted in the middle")
+ *
+ * Drawn at the centre (x, y) with effective radius r, in the sound's
+ * colour. Stroke widths scale with r so accents read at a glance.
+ */
+function drawSoundGlyph(
+  ctx: CanvasRenderingContext2D,
+  sound: Sound,
+  x: number,
+  y: number,
+  r: number,
+  color: string,
+) {
+  ctx.lineCap = 'round';
+  if (sound === 'ch') {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2.5, r * 0.22);
+    const k = r * 0.78;
+    ctx.beginPath();
+    ctx.moveTo(x - k, y - k);
+    ctx.lineTo(x + k, y + k);
+    ctx.moveTo(x + k, y - k);
+    ctx.lineTo(x - k, y + k);
+    ctx.stroke();
+  } else if (sound === 'dong') {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2.5, r * 0.2);
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.85, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    // ding — filled disc with a slight rim to make it distinct from a
+    // dimmed dong at low contrast.
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawDetectedNote(
@@ -823,13 +892,17 @@ function drawDetectedNote(
 ) {
   const sound = note.soundClass;
   const color = sound === 'unknown' ? '#8a93b0' : SOUND_COLORS[sound as Sound];
-  const r = 4 + note.amplitude * 6;
+  const r = 6 + note.amplitude * 8;
 
-  ctx.globalAlpha = note.isMistake ? 0.35 : 0.75;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x, y + 30, r, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.globalAlpha = note.isMistake ? 0.35 : 0.7;
+  if (sound === 'unknown') {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y + 32, r * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    drawSoundGlyph(ctx, sound as Sound, x, y + 32, r, color);
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -891,7 +964,8 @@ function drawHUD(
     perfect: 0,
     good: 0,
     wrong_sound: 0,
-    late: 0,
+    late_correct: 0,
+    late_wrong: 0,
     miss: 0,
     mistake: 0,
   };
@@ -922,16 +996,26 @@ function drawHUD(
   ctx.fillStyle = '#8a93b0';
   ctx.fillText('accuracy (last 20)', 16, 56);
 
-  const labels: Outcome[] = ['perfect', 'good', 'wrong_sound', 'late', 'miss', 'mistake'];
+  // Compact one-letter labels — late_correct / late_wrong share L so we
+  // disambiguate with a sign suffix.
+  const hudLabels: Record<Outcome, string> = {
+    perfect: 'P',
+    good: 'G',
+    wrong_sound: 'W',
+    late_correct: 'L+',
+    late_wrong: 'L-',
+    miss: 'M',
+    mistake: '!',
+  };
   let x = 16;
   const y = 76;
   ctx.font = '10px ui-monospace, Consolas, monospace';
-  for (const key of labels) {
+  for (const key of OUTCOME_ORDER) {
     const n = counts[key];
     ctx.fillStyle = n === 0 ? '#2a3048' : OUTCOME_COLORS[key];
     ctx.fillRect(x, y, 18, 4);
     ctx.fillStyle = '#8a93b0';
-    ctx.fillText(`${key[0]?.toUpperCase()}${n > 0 ? n : ''}`, x, y + 18);
+    ctx.fillText(`${hudLabels[key]}${n > 0 ? n : ''}`, x, y + 18);
     x += 30;
   }
 }
@@ -954,7 +1038,8 @@ function buildSummary(scoring: ScoringEngine, elapsedSec: number): SessionSummar
     perfect: 0,
     good: 0,
     wrong_sound: 0,
-    late: 0,
+    late_correct: 0,
+    late_wrong: 0,
     miss: 0,
     mistake: 0,
   };
@@ -1061,14 +1146,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function OutcomeBreakdown({ counts }: { counts: Record<Outcome, number> }) {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const order: Outcome[] = ['perfect', 'good', 'wrong_sound', 'late', 'miss', 'mistake'];
   if (total === 0) {
     return <p className="text-xs text-text-dim text-center">No beats scored yet.</p>;
   }
   return (
     <div className="flex flex-col gap-1">
       <div className="flex w-full h-2 rounded-full overflow-hidden bg-bg border border-border">
-        {order.map((key) => {
+        {OUTCOME_ORDER.map((key) => {
           const n = counts[key];
           if (n === 0) return null;
           const pct = (n / total) * 100;
@@ -1076,19 +1160,19 @@ function OutcomeBreakdown({ counts }: { counts: Record<Outcome, number> }) {
             <div
               key={key}
               style={{ width: `${pct}%`, background: OUTCOME_COLORS[key] }}
-              title={`${key}: ${n}`}
+              title={`${OUTCOME_LABELS[key]}: ${n}`}
             />
           );
         })}
       </div>
       <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-[11px]">
-        {order.map((key) => (
+        {OUTCOME_ORDER.map((key) => (
           <div key={key} className="flex items-center gap-1.5 text-text-dim">
             <span
               className="w-2 h-2 rounded-full shrink-0"
               style={{ background: OUTCOME_COLORS[key] }}
             />
-            <span className="capitalize">{key.replace('_', ' ')}</span>
+            <span>{OUTCOME_LABELS[key]}</span>
             <span className="ml-auto font-mono text-text">{counts[key]}</span>
           </div>
         ))}

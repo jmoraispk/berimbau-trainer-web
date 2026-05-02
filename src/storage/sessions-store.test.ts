@@ -18,7 +18,7 @@ function make(endedAt: number, overrides: Partial<SessionRecord> = {}): Omit<Ses
     accuracy: 0.8,
     totalScoredBeats: 10,
     bestStreak: 3,
-    outcomeCounts: { perfect: 5, good: 3, wrong_sound: 0, late: 1, miss: 1, mistake: 0 },
+    outcomeCounts: { perfect: 5, good: 3, wrong_sound: 0, late_correct: 1, late_wrong: 0, miss: 1, mistake: 0 },
     perSound: { dong: 0.9, ch: 0.7, ding: 0.8 },
     ...overrides,
   };

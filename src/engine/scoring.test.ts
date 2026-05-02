@@ -57,13 +57,36 @@ describe('ScoringEngine — timing and outcomes', () => {
     expect(r?.score).toBeLessThan(1);
   });
 
-  it('scores "late" past tolerance but within late zone', () => {
+  it('rewards a right-sound late hit with late_correct credit', () => {
     const scorer = new ScoringEngine();
     const t0 = 1000;
     scorer.registerTargetBeat(0, 'dong', t0, t0);
     const offset = (TIMING_TOLERANCE_SEC + LATE_ZONE_SEC) / 2;
     const r = scorer.registerDetectedNote(makeNote('dong', t0 + offset), t0);
-    expect(r?.outcome).toBe('late');
+    expect(r?.outcome).toBe('late_correct');
+    // Should beat both wrong_sound (0.4) and late_wrong (0.2).
+    expect(r?.score).toBeGreaterThan(0.4);
+  });
+
+  it('penalises a wrong-sound late hit but still gives token credit', () => {
+    const scorer = new ScoringEngine();
+    const t0 = 1000;
+    scorer.registerTargetBeat(0, 'dong', t0, t0);
+    const offset = (TIMING_TOLERANCE_SEC + LATE_ZONE_SEC) / 2;
+    const r = scorer.registerDetectedNote(makeNote('ding', t0 + offset), t0);
+    expect(r?.outcome).toBe('late_wrong');
+    expect(r?.score).toBeGreaterThan(0);
+    // Should be worth less than late_correct.
+    expect(r?.score).toBeLessThan(0.5);
+  });
+
+  it('counts late_correct toward per-sound accuracy', () => {
+    const scorer = new ScoringEngine();
+    const t0 = 1000;
+    scorer.registerTargetBeat(0, 'dong', t0, t0);
+    const offset = (TIMING_TOLERANCE_SEC + LATE_ZONE_SEC) / 2;
+    scorer.registerDetectedNote(makeNote('dong', t0 + offset), t0);
+    expect(scorer.soundAccuracy().dong).toBe(1);
   });
 
   it('flushes unresolved beats past the late zone as misses', () => {
