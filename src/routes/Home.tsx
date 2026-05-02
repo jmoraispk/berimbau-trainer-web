@@ -9,6 +9,7 @@ import {
   type ToqueName,
 } from '@/engine/rhythms';
 import { SoundSymbol } from '@/components/SoundSymbol';
+import { PatternPreview } from '@/components/PatternPreview';
 import { preloadActiveProfiles } from '@/audio/active-profiles';
 import type { SavedCalibration } from '@/engine/calibration';
 import { listRecentSessions } from '@/storage/sessions-store';
@@ -104,7 +105,7 @@ export function Home() {
         ))}
       </section>
 
-      <section className="w-full flex flex-col md:flex-row gap-6 items-stretch">
+      <section className="w-full flex flex-col md:flex-row gap-6 items-start">
         <div className="flex-1 flex flex-col gap-3 min-w-0">
           <SectionLabel>Toque</SectionLabel>
           {groups.map((group) => (
@@ -144,28 +145,39 @@ export function Home() {
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 md:w-60 md:shrink-0">
-          <button
-            type="button"
-            onClick={start}
-            disabled={toque.comingSoon}
-            className="btn-primary py-4 w-full text-base"
-          >
-            Start practicing
-          </button>
-          <Link
-            href="/calibrate"
-            className="btn-secondary py-4 w-full text-base flex flex-col items-center gap-0"
-          >
-            <span>{calibration ? 'Recalibrate' : 'Calibrate'}</span>
-            {calibration && (
-              <span className="text-[10px] text-text-dim font-mono">
-                {totalSamples(calibration)} samples · saved {formatRelative(calibration.savedAt)}
-              </span>
-            )}
-          </Link>
+        <div className="flex flex-col gap-2 w-full md:w-72 md:shrink-0">
+          <div className="flex items-baseline justify-between gap-3">
+            <SectionLabel>{toque.name}</SectionLabel>
+            <span className="text-[10px] font-mono text-text-dim">
+              default {toque.defaultBpm} bpm
+            </span>
+          </div>
+          <p className="text-xs text-text-dim leading-relaxed">{toque.description}</p>
+          <PatternPreview toque={toque} cellSize="compact" />
         </div>
       </section>
+
+      <div className="w-full flex flex-col sm:flex-row gap-3">
+        <button
+          type="button"
+          onClick={start}
+          disabled={toque.comingSoon}
+          className="btn-primary flex-1 py-4 text-base"
+        >
+          Start practicing
+        </button>
+        <Link
+          href="/calibrate"
+          className="btn-secondary flex-1 py-4 text-base flex flex-col items-center gap-0"
+        >
+          <span>{calibration ? 'Recalibrate' : 'Calibrate'}</span>
+          {calibration && (
+            <span className="text-[10px] text-text-dim font-mono">
+              {totalSamples(calibration)} samples · saved {formatRelative(calibration.savedAt)}
+            </span>
+          )}
+        </Link>
+      </div>
 
       <RecentSessionsCard sessions={sessions} />
 

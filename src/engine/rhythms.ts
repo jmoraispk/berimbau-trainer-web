@@ -41,7 +41,8 @@ export type ToqueName =
   | 'Benguela'
   | 'São Bento Grande (Regional)'
   | 'Iuna'
-  | 'Cavalaria';
+  | 'Cavalaria'
+  | 'Viradas';
 
 export interface ToquePattern {
   name: ToqueName;
@@ -124,6 +125,16 @@ export const TOQUES: Record<ToqueName, ToquePattern> = {
     intervals: [],
     comingSoon: true,
   },
+
+  Viradas: {
+    name: 'Viradas',
+    difficulty: 'very_advanced',
+    description:
+      'Variations and breaks layered on top of a base toque. Per-toque viradas come later.',
+    defaultBpm: 90,
+    intervals: [],
+    comingSoon: true,
+  },
 };
 
 /**
@@ -173,7 +184,7 @@ export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   easy: 'Easy',
   intermediate: 'Intermediate',
   advanced: 'Advanced',
-  very_advanced: 'Very advanced',
+  very_advanced: 'Pro',
 };
 
 /** Group toques by difficulty in DIFFICULTY_ORDER. */
