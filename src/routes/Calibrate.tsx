@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { AudioInput } from '@/audio/AudioInput';
-import { audioBus, type RawCapture } from '@/audio/AudioBus';
+import { audioBus } from '@/audio/AudioBus';
 import { SOUND_COLORS, SOUND_LABELS } from '@/engine/rhythms';
 import { SoundSymbol } from '@/components/SoundSymbol';
 import { extractFeatures } from '@/engine/features';
@@ -39,12 +39,12 @@ const TIER_PERFECT = 7;
 const CYCLE_SEC = 3;
 const PREP_SEC = 2;
 const STRIKE_SEC = 0.4;
-// Classifier window: 150 ms (20 ms pre + 130 ms post-onset) — same as
-// the live worklet's 'onsetQuick' message, so calibration profiles
-// describe exactly what Practice sees. Long enough for stable
-// autocorrelation f0 across the berimbau's typical 80–250 Hz range.
-const CLASSIFIER_PRE_SEC = 0.02;
-const CLASSIFIER_TOTAL_SEC = 0.15;
+// Local refractory: ignore a 'quick' onset that lands within 250 ms of
+// the previous accepted one. The worklet's MIN_GAP_SEC is 80 ms (so
+// fast tch-tch in Practice still works), but a single calibration
+// strike often re-crosses threshold ~100–200 ms later from gourd
+// resonance. 250 ms is comfortable inside the 3 s cycle.
+const QUICK_REFRACTORY_SEC = 0.25;
 
 type Phase =
   | { kind: 'idle' }
@@ -59,7 +59,7 @@ export function Calibrate() {
   const [, navigate] = useLocation();
   const { t } = useI18n();
   const inputRef = useRef<AudioInput | null>(null);
-  const lastSeenTsRef = useRef(-Infinity);
+  const lastAcceptedTsRef = useRef(-Infinity);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [samples, setSamples] = useState<CalibrationSample[]>([]);
 
@@ -72,31 +72,49 @@ export function Calibrate() {
   const activeSound: ClassifiableSound | null =
     phase.kind === 'recording' ? STAGES[phase.stage] ?? null : null;
 
-  // Subscribe to raw 'full' captures while a stage is active. Each capture
-  // is tagged with the active stage's sound (we ignore the live classifier
-  // — calibration is the source of truth, not the consumer).
+  // Subscribe to both quick + full raw captures while a stage is active.
+  //
+  //   'quick' (≈150 ms latency) — creates the sample, drives the thumbnail.
+  //   'full'  (≈500 ms latency) — replaces the sample's segment so playback
+  //                                has the decay tail.
+  //
+  // A 250 ms local refractory drops the secondary attack a single strike
+  // sometimes re-triggers (gourd resonance) — the worklet's 80 ms gap
+  // stays unchanged so fast tch-tch in Practice still works.
   useEffect(() => {
     if (!activeSound) return;
-    const unsub = audioBus.subscribeRawCapture((capture: RawCapture) => {
-      if (capture.timestamp <= lastSeenTsRef.current) return;
-      lastSeenTsRef.current = capture.timestamp;
-      // Reject dead-silent onsets that slip through the worklet threshold.
-      if (capture.rms < 0.02) return;
+    const unsub = audioBus.subscribeRawCapture((capture) => {
+      if (capture.kind === 'quick') {
+        if (capture.timestamp - lastAcceptedTsRef.current < QUICK_REFRACTORY_SEC) return;
+        if (capture.rms < 0.02) return;
+        lastAcceptedTsRef.current = capture.timestamp;
 
-      const features = extractClassifierFeatures(capture);
-      setSamples((prev) => [
-        ...prev,
-        {
-          sound: activeSound,
-          f0: features.f0,
-          centroid: features.centroid,
-          rms: capture.rms,
-          at: capture.timestamp,
-          segment: capture.segment,
-          sampleRate: capture.sampleRate,
-          preSec: capture.preSec,
-        },
-      ]);
+        const features = extractFeatures(capture.segment, capture.sampleRate);
+        setSamples((prev) => [
+          ...prev,
+          {
+            sound: activeSound,
+            f0: features.f0,
+            centroid: features.centroid,
+            rms: capture.rms,
+            at: capture.timestamp,
+            segment: capture.segment,
+            sampleRate: capture.sampleRate,
+            preSec: capture.preSec,
+          },
+        ]);
+      } else {
+        // 'full' — upgrade the matching sample's segment for playback.
+        // If we never accepted the quick (debounced or below threshold),
+        // there's nothing to upgrade; skip silently.
+        setSamples((prev) =>
+          prev.map((s) =>
+            s.at === capture.timestamp
+              ? { ...s, segment: capture.segment, preSec: capture.preSec }
+              : s,
+          ),
+        );
+      }
     });
     return unsub;
   }, [activeSound]);
@@ -115,7 +133,7 @@ export function Calibrate() {
       const input = new AudioInput();
       await input.start();
       inputRef.current = input;
-      lastSeenTsRef.current = input.now();
+      lastAcceptedTsRef.current = -Infinity;
       setSamples([]);
       setPhase({ kind: 'recording', stage: 0 });
     } catch (err) {
@@ -197,6 +215,7 @@ export function Calibrate() {
             samples={samples.filter((s) => s.sound === activeSound)}
             onPlay={handlePlaySample}
             onDiscard={handleDiscardSample}
+            getLevel={() => inputRef.current?.getLevel() ?? 0}
             t={t}
           />
           <StageStrip byClass={byClass} activeStage={phase.stage} />
@@ -254,12 +273,14 @@ function RecordingPanel({
   samples,
   onPlay,
   onDiscard,
+  getLevel,
   t,
 }: {
   activeSound: ClassifiableSound;
   samples: CalibrationSample[];
   onPlay: (sample: CalibrationSample) => void;
   onDiscard: (at: number) => void;
+  getLevel: () => number;
   t: TFn;
 }) {
   return (
@@ -267,7 +288,8 @@ function RecordingPanel({
       <div className="flex justify-center md:justify-start">
         <CycleRing sound={activeSound} t={t} />
       </div>
-      <div className="flex flex-col gap-2 min-w-0">
+      <div className="flex flex-col gap-3 min-w-0">
+        <LevelMeter getLevel={getLevel} t={t} />
         <div className="flex items-baseline justify-between">
           <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
             {t('calibrate.captured', { sound: SOUND_LABELS[activeSound] })}
@@ -276,6 +298,79 @@ function RecordingPanel({
         </div>
         <SampleGrid samples={samples} onPlay={onPlay} onDiscard={onDiscard} t={t} />
       </div>
+    </div>
+  );
+}
+
+// ─── Level meter ─────────────────────────────────────────────────────────
+
+/**
+ * Live RMS bar fed by AudioInput's analyser. Polls at ~20 Hz so the
+ * parent doesn't re-render on every animation frame. The ⓘ button
+ * reveals troubleshooting copy for "the meter doesn't move" — usually
+ * an OS-level wrong-mic problem.
+ */
+function LevelMeter({ getLevel, t }: { getLevel: () => number; t: TFn }) {
+  const [level, setLevel] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  useEffect(() => {
+    let raf = 0;
+    let last = 0;
+    const tick = (now: number) => {
+      if (now - last >= 50) {
+        setLevel(getLevel());
+        last = now;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [getLevel]);
+
+  // Compress to 0..1 with a soft cap. Onsets typically RMS 0.1–0.3;
+  // ambient mic noise sits below 0.005. ×4 lets a normal strike fill
+  // most of the bar without clipping early.
+  const fill = Math.min(1, level * 4);
+  const isAudible = level > 0.005;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase shrink-0">
+          {t('calibrate.level_label')}
+        </span>
+        <div className="flex-1 h-2 rounded-full bg-bg-elev border border-border overflow-hidden">
+          <div
+            className="h-full rounded-full transition-[width] duration-75"
+            style={{
+              width: `${fill * 100}%`,
+              background: isAudible ? '#64f08c' : '#2a3556',
+            }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setHelpOpen((v) => !v)}
+          aria-label={t('calibrate.level_help_aria')}
+          className="shrink-0 w-5 h-5 rounded-full border border-border text-[10px] font-mono text-text-dim hover:text-text hover:border-border-strong leading-none flex items-center justify-center"
+        >
+          i
+        </button>
+      </div>
+      {helpOpen && (
+        <div className="card text-xs text-text-dim p-3 flex flex-col gap-2">
+          <span className="font-medium text-text">{t('calibrate.level_help_title')}</span>
+          <p>{t('calibrate.level_help_body')}</p>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(false)}
+            className="self-end btn-ghost px-3 py-1 text-xs"
+          >
+            {t('calibrate.level_help_close')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -514,18 +609,6 @@ function waveformPath(segment: Float32Array, w: number, h: number, points = 120)
   return d;
 }
 
-function extractClassifierFeatures(capture: RawCapture): { f0: number; centroid: number } {
-  const sr = capture.sampleRate;
-  // Match Practice's 'onsetQuick' window: 20 ms pre + 80 ms post.
-  const startSec = Math.max(0, capture.preSec - CLASSIFIER_PRE_SEC);
-  const startSample = Math.floor(startSec * sr);
-  const winSamples = Math.floor(CLASSIFIER_TOTAL_SEC * sr);
-  const endSample = Math.min(capture.segment.length, startSample + winSamples);
-  const window = capture.segment.subarray(startSample, endSample);
-  const features = extractFeatures(window, sr);
-  return { f0: features.f0, centroid: features.centroid };
-}
-
 // ─── Tier badge ──────────────────────────────────────────────────────────
 
 function TierBadge({ count, t }: { count: number; t: TFn }) {
@@ -734,6 +817,25 @@ function Scatter({ samples }: { samples: CalibrationSample[] }) {
           opacity={0.85}
         />
       ))}
+      {/* Legend — colored dot + label per sound, top-right corner. */}
+      {STAGES.map((sound, i) => {
+        const x = W - padding - 88 + i * 32;
+        const y = padding + 4;
+        return (
+          <g key={sound}>
+            <circle cx={x} cy={y} r={3.5} fill={SOUND_COLORS[sound]} />
+            <text
+              x={x + 6}
+              y={y + 3}
+              fontSize="9"
+              fill="#c9d0e3"
+              fontFamily="ui-monospace, SFMono-Regular, monospace"
+            >
+              {SOUND_LABELS[sound]}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }

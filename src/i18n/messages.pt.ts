@@ -119,6 +119,12 @@ export const pt: Messages = {
   'calibrate.cancel_return': 'Cancelar e voltar ao início',
   'calibrate.thumbnail_title': 'f0 {f0} Hz · centróide {centroid} Hz · clique para tocar',
   'calibrate.error_save': 'Falha ao salvar a calibração.',
+  'calibrate.level_label': 'Nível do mic',
+  'calibrate.level_help_aria': 'Por que o medidor não se mexe?',
+  'calibrate.level_help_title': 'O medidor não se mexe?',
+  'calibrate.level_help_body': 'O medidor mostra o nível ao vivo do microfone. Se ele ficar parado enquanto você toca, provavelmente o microfone errado está selecionado no sistema — verifique as configurações de som do SO, confirme que o navegador tem permissão para o microfone e veja se o volume de entrada não está mudo ou muito baixo.',
+  'calibrate.level_help_close': 'Entendi',
+  'calibrate.scatter_legend': 'TCH · DONG · DING',
 
   // ── songs ───────────────────────────────────────────────────────────
   'songs.title': 'Músicas',

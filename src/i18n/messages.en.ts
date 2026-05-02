@@ -118,6 +118,12 @@ export const en = {
   'calibrate.cancel_return': 'Cancel and return home',
   'calibrate.thumbnail_title': 'f0 {f0} Hz · centroid {centroid} Hz · click to play',
   'calibrate.error_save': 'Failed to save calibration.',
+  'calibrate.level_label': 'Mic level',
+  'calibrate.level_help_aria': 'Why is the meter not moving?',
+  'calibrate.level_help_title': 'No movement on the meter?',
+  'calibrate.level_help_body': 'The meter shows the live mic level. If it stays flat while you play, the wrong input is probably selected at the OS level — check your system sound settings, confirm the browser has microphone permission, and make sure the input volume isn\'t muted or set very low.',
+  'calibrate.level_help_close': 'Got it',
+  'calibrate.scatter_legend': 'TCH · DONG · DING',
 
   // ── songs ───────────────────────────────────────────────────────────
   'songs.title': 'Songs',

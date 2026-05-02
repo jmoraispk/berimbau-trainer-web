@@ -58,6 +58,8 @@ export class AudioInput {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private workletNode: AudioWorkletNode | null = null;
+  private analyser: AnalyserNode | null = null;
+  private analyserBuf: Float32Array<ArrayBuffer> | null = null;
   private lastOnsetAt = -Infinity;
   private profiles: Profiles | undefined;
   private onVisibility = () => this.handleVisibility();
@@ -103,6 +105,7 @@ export class AudioInput {
         // Only ship the full segment when something is listening — keeps
         // the per-frame transfer cost zero during ordinary practice.
         audioBus.pushRawCapture({
+          kind: 'full',
           timestamp: msg.timestamp,
           preSec: msg.preSec,
           segment: msg.segment,
@@ -114,6 +117,13 @@ export class AudioInput {
     source.connect(this.workletNode);
     // Worklet doesn't need to reach the destination — we only want its
     // messages. Connecting to destination would route mic to speakers.
+
+    // Parallel analyser used by Calibrate's level meter. Cheap; doesn't
+    // route audio anywhere, just exposes a recent-time-domain view.
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 1024;
+    this.analyserBuf = new Float32Array(this.analyser.fftSize);
+    source.connect(this.analyser);
 
     if (this.context.state === 'suspended') await this.context.resume();
 
@@ -159,6 +169,9 @@ export class AudioInput {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.workletNode?.disconnect();
     this.workletNode = null;
+    this.analyser?.disconnect();
+    this.analyser = null;
+    this.analyserBuf = null;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     if (this.context) {
@@ -166,6 +179,22 @@ export class AudioInput {
       this.context = null;
     }
     audioBus.emit({ type: 'stopped' });
+  }
+
+  /**
+   * Snapshot RMS of the most recent ~22 ms (1024 samples at 48 kHz) of
+   * mic input. Returns 0 when no analyser is attached (keyboard mode,
+   * stopped, or pre-start). Cheap enough to call every animation frame.
+   */
+  getLevel(): number {
+    if (!this.analyser || !this.analyserBuf) return 0;
+    this.analyser.getFloatTimeDomainData(this.analyserBuf);
+    let sum = 0;
+    for (let i = 0; i < this.analyserBuf.length; i++) {
+      const v = this.analyserBuf[i]!;
+      sum += v * v;
+    }
+    return Math.sqrt(sum / this.analyserBuf.length);
   }
 
   setProfiles(profiles: Profiles | undefined): void {
@@ -183,6 +212,20 @@ export class AudioInput {
 
     const bleed = msg.timestamp - this.lastOnsetAt < BLEED_GAP_SEC;
     this.lastOnsetAt = msg.timestamp;
+
+    // Forward the quick segment so Calibrate gets a thumbnail ~3× sooner
+    // than waiting for the full window. Gated on listeners so Practice
+    // doesn't pay for the extra fan-out.
+    if (audioBus.hasRawListeners()) {
+      audioBus.pushRawCapture({
+        kind: 'quick',
+        timestamp: msg.timestamp,
+        preSec: msg.preSec,
+        segment: msg.segment,
+        sampleRate: msg.sampleRate,
+        rms: msg.rms,
+      });
+    }
 
     const note: DetectedNote = {
       timestamp: msg.timestamp,

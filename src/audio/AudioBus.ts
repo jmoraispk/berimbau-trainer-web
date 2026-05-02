@@ -24,11 +24,18 @@ export type AudioBusEvent =
 export type AudioBusListener = (event: AudioBusEvent) => void;
 
 /**
- * A 'full' onset capture sent only when something subscribes via
- * subscribeRawCapture — the calibration UI uses this for waveform
- * thumbnails + playback. Practice never reads it.
+ * An onset capture forwarded only when something subscribes via
+ * subscribeRawCapture — Calibrate is the only consumer today.
+ *
+ * Two flavours per strike, sharing the same `timestamp`:
+ *   - 'quick' arrives ~150 ms after the strike (20 ms pre + 130 ms post).
+ *     Good enough for features + a thumbnail; gets the UI on screen fast.
+ *   - 'full'  arrives ~500 ms after the strike (50 ms pre + 450 ms post).
+ *     Used to upgrade the sample's stored segment so playback has the
+ *     decay tail.
  */
 export interface RawCapture {
+  kind: 'quick' | 'full';
   /** AudioContext time when the strike was detected. */
   timestamp: number;
   /** Seconds of pre-onset audio at the start of `segment`. */
