@@ -152,31 +152,29 @@ export function Home() {
         </div>
 
         <div className="flex flex-col gap-2 w-full md:w-72 md:shrink-0">
-          {/* Every slot reserves its worst-case height so toggling
-              toques never grows the right column — the Start Practicing
-              button below stays put regardless of toque or language. */}
-          <div className="flex items-baseline justify-between gap-3 min-h-[2.4rem]">
+          {/* Every slot uses a *fixed* height (h-[X], not min-h) so the
+              column is exactly the same total regardless of which toque
+              is selected. min-h was letting pixel-level overruns push
+              the action buttons by a few pixels per toggle. */}
+          <div className="flex items-baseline justify-between gap-3 h-[2.8rem] overflow-hidden">
             <SectionLabel>{toque.name}</SectionLabel>
             <span className="text-[10px] font-mono text-text-dim shrink-0">
               {t('home.default_bpm', { bpm: toque.defaultBpm })}
             </span>
           </div>
-          {/* Description sits above the rhythm. line-clamp-4 + min-h
-              keeps the slot at exactly 4 lines whether the body is
-              short ("Steady, propulsive…") or long. Full copy is in
-              the tooltip. */}
+          {/* 3 lines fits every current description (the longest is
+              ~2.4 lines at this width). Was 4; tightening it pulls the
+              rhythm widget up by ~1.2 rem. */}
           <p
-            className="text-xs text-text-dim leading-relaxed line-clamp-4 min-h-[4.8rem]"
+            className="text-xs text-text-dim leading-relaxed line-clamp-3 h-[3.6rem]"
             title={t(toqueDescKey(toque.name))}
           >
             {t(toqueDescKey(toque.name))}
           </p>
-          {/* min-h-[10rem] (160 px) comfortably fits the tallest layout
-              we render: São Bento Grande Regional's 4×2 grid lands at
-              roughly 154 px including card padding, glyphs, gap and
-              beat-number row. Anything shorter (4×1) sits at the top
-              of the slot with empty space below. */}
-          <div className="min-h-[10rem]">
+          {/* 10.5 rem (168 px) holds São Bento Grande Regional's 4×2
+              grid (~154 px) with a couple of pixels to spare. Shorter
+              patterns sit at the top of the slot. */}
+          <div className="h-[10.5rem]">
             <PatternPreview toque={toque} cellSize="compact" />
           </div>
         </div>
