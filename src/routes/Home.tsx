@@ -205,12 +205,20 @@ export function Home() {
 
       <RecentSessionsCard sessions={sessions} t={t} />
 
-      <Link
-        href="/songs"
-        className="text-sm text-text-dim underline underline-offset-4 hover:text-text"
-      >
-        {t('home.browse_songs', { n: 185 })}
-      </Link>
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+        <Link
+          href="/classes"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_classes')}
+        </Link>
+        <Link
+          href="/songs"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_songs', { n: 185 })}
+        </Link>
+      </div>
 
       <footer className="text-text-dim text-[10px] font-mono tracking-wider mt-auto">
         {t('home.footer', { n: totalToques })}

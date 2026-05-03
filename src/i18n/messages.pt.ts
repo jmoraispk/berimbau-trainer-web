@@ -45,6 +45,13 @@ export const pt: Messages = {
   'home.avg': 'média',
   'home.view_all_stats': 'Ver tudo →',
   'home.browse_songs': 'Explorar {n} músicas',
+  'home.browse_classes': 'Fazer uma aula',
+
+  // ── classes ─────────────────────────────────────────────────────────
+  'classes.title': 'Aulas',
+  'classes.subtitle': 'Progressões guiadas para cada toque e virada.',
+  'classes.coming_label': 'Em breve',
+  'classes.coming_body': 'Exercícios passo a passo que avançam da pulsação básica até o toque completo, além de drills para cada virada. O currículo está sendo preparado — segura aí.',
   'home.footer': '{n} toques · v2 · web',
   'home.settings_aria': 'Configurações',
 
