@@ -30,7 +30,7 @@ export const pt: Messages = {
   'difficulty.easy': 'Fácil',
   'difficulty.intermediate': 'Intermediário',
   'difficulty.advanced': 'Avançado',
-  'difficulty.very_advanced': 'Pro',
+  'difficulty.very_advanced': 'Pro (em breve)',
 
   // ── home ────────────────────────────────────────────────────────────
   'home.tagline': 'Escolha um toque, ajuste o andamento e toque junto pelo microfone.',

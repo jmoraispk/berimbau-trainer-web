@@ -151,22 +151,30 @@ export function Home() {
         </div>
 
         <div className="flex flex-col gap-2 w-full md:w-72 md:shrink-0">
-          {/* min-h fits two wrapped lines of the longest toque name
-              ("São Bento Grande de Angola") so the description and the
-              pattern preview below don't shift when toggling toques. */}
+          {/* All three slots reserve their worst-case height so toggling
+              toques never grows the right column — the Start Practicing
+              button below stays put. */}
           <div className="flex items-baseline justify-between gap-3 min-h-[2.4rem]">
             <SectionLabel>{toque.name}</SectionLabel>
             <span className="text-[10px] font-mono text-text-dim shrink-0">
               {t('home.default_bpm', { bpm: toque.defaultBpm })}
             </span>
           </div>
-          {/* min-h reserves room for ~4 lines so the PatternPreview below
-              doesn't bounce when toggling between toques whose descriptions
-              wrap at different lengths (e.g. Angola vs Benguela, EN vs PT). */}
-          <p className="text-xs text-text-dim leading-relaxed min-h-[5rem]">
+          {/* Pattern goes ABOVE the description so the symbols sit close
+              to the top of the column, roughly aligned with the
+              Intermediate toques on the left. min-h fits a 2-row pattern
+              (Regional's 4×2). */}
+          <div className="min-h-[8rem]">
+            <PatternPreview toque={toque} cellSize="compact" />
+          </div>
+          {/* Description gets a fixed 4-line slot. Longer copy clamps
+              with a tooltip carrying the full text. */}
+          <p
+            className="text-xs text-text-dim leading-relaxed line-clamp-4 min-h-[4.8rem]"
+            title={t(toqueDescKey(toque.name))}
+          >
             {t(toqueDescKey(toque.name))}
           </p>
-          <PatternPreview toque={toque} cellSize="compact" />
         </div>
       </section>
 

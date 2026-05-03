@@ -29,7 +29,7 @@ export const en = {
   'difficulty.easy': 'Easy',
   'difficulty.intermediate': 'Intermediate',
   'difficulty.advanced': 'Advanced',
-  'difficulty.very_advanced': 'Pro',
+  'difficulty.very_advanced': 'Pro (coming soon)',
 
   // ── home ────────────────────────────────────────────────────────────
   'home.tagline': 'Pick a toque, set the tempo, play along into your mic.',
