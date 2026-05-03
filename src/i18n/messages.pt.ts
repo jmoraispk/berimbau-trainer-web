@@ -195,6 +195,11 @@ export const pt: Messages = {
   'settings.import_done': '{sessions} sessões importadas{maybe_calibration}.',
   'settings.import_failed': 'Falha na importação: {reason}',
   'settings.import_failed_generic': 'Falha na importação.',
+  'settings.display': 'Exibição',
+  'settings.real_rhythm_label': 'Ritmo real',
+  'settings.real_rhythm_body': 'Desloca o padrão visual em uma casa para que o silêncio entre os ciclos fique às 3 h — mais próximo de como o capoeirista conta o toque. O áudio não muda. Experimental.',
+  'settings.real_rhythm_on': 'Ligado',
+  'settings.real_rhythm_off': 'Desligado',
 
   // ── stats ───────────────────────────────────────────────────────────
   'stats.title': 'Estatísticas',

@@ -194,6 +194,11 @@ export const en = {
   'settings.import_done': 'Imported {sessions} sessions{maybe_calibration}.',
   'settings.import_failed': 'Import failed: {reason}',
   'settings.import_failed_generic': 'Import failed.',
+  'settings.display': 'Display',
+  'settings.real_rhythm_label': 'Real rhythm',
+  'settings.real_rhythm_body': 'Shift the visual pattern by one slot so the silence between cycles falls at 3 o\'clock — closer to how a capoeirista counts the toque. Audio is unchanged. Experimental.',
+  'settings.real_rhythm_on': 'On',
+  'settings.real_rhythm_off': 'Off',
 
   // ── stats ───────────────────────────────────────────────────────────
   'stats.title': 'Stats',

@@ -1,5 +1,6 @@
 import { type IntervalToken, type Sound, type ToquePattern } from '@/engine/rhythms';
 import { SoundSymbol } from './SoundSymbol';
+import { useRealRhythm } from '@/settings/real-rhythm';
 
 /**
  * Variable-length pattern preview. One card cell per beat (interval).
@@ -17,6 +18,7 @@ export function PatternPreview({
   toque: ToquePattern;
   cellSize?: 'normal' | 'compact';
 }) {
+  const { realRhythm } = useRealRhythm();
   if (toque.intervals.length === 0) {
     return (
       <div className="card p-4 text-center text-sm text-text-dim">
@@ -24,7 +26,17 @@ export function PatternPreview({
       </div>
     );
   }
-  const cycleBeats = toque.intervals.length;
+  // When the user has flipped the "real rhythm" preference, shift the
+  // displayed sequence by one slot so the trailing rest (or trailing
+  // beat for toques without a rest) becomes the first cell — matches
+  // how a capoeirista counts the toque. Audio order is unchanged.
+  const intervals = realRhythm
+    ? [
+        toque.intervals[toque.intervals.length - 1]!,
+        ...toque.intervals.slice(0, -1),
+      ]
+    : toque.intervals;
+  const cycleBeats = intervals.length;
   const padClass = cellSize === 'compact' ? 'p-2' : 'p-3';
   const symbolSize = cellSize === 'compact' ? 22 : 28;
   const tchSymbolSize = cellSize === 'compact' ? 14 : 18;
@@ -40,7 +52,7 @@ export function PatternPreview({
         className="grid gap-1.5"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
-        {toque.intervals.map((token, i) => (
+        {intervals.map((token, i) => (
           <div key={i} className="flex flex-col gap-1">
             <PatternCell
               token={token}

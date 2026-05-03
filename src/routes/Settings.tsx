@@ -17,6 +17,7 @@ import {
   parseBackup,
 } from '@/storage/backup';
 import { formatRelativeTime, useI18n } from '@/i18n';
+import { useRealRhythm } from '@/settings/real-rhythm';
 
 /**
  * Local-data management. Everything in this app lives in the browser
@@ -28,6 +29,7 @@ type Busy = 'calibration' | 'sessions' | 'export' | 'import' | null;
 
 export function Settings() {
   const { t } = useI18n();
+  const { realRhythm, setRealRhythm } = useRealRhythm();
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [busy, setBusy] = useState<Busy>(null);
@@ -228,6 +230,33 @@ export function Settings() {
               {t('settings.history_none')}
             </span>
           )}
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          {t('settings.display')}
+        </h2>
+        <Card>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">{t('settings.real_rhythm_label')}</span>
+            <span className="text-xs text-text-dim leading-relaxed max-w-md">
+              {t('settings.real_rhythm_body')}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRealRhythm(!realRhythm)}
+            role="switch"
+            aria-checked={realRhythm}
+            className={`shrink-0 inline-flex items-center px-4 py-1.5 rounded-full border text-sm transition ${
+              realRhythm
+                ? 'bg-accent text-bg border-accent'
+                : 'bg-bg-elev text-text-dim border-border hover:border-border-strong'
+            }`}
+          >
+            {realRhythm ? t('settings.real_rhythm_on') : t('settings.real_rhythm_off')}
+          </button>
         </Card>
       </section>
 

@@ -22,6 +22,7 @@ import {
 } from '@/engine/scoring';
 import { saveSession } from '@/storage/sessions-store';
 import { useI18n, type TFn } from '@/i18n';
+import { useRealRhythm } from '@/settings/real-rhythm';
 
 /**
  * Practice screen — rhythm timeline + mic scoring.
@@ -143,6 +144,14 @@ export function Practice() {
   useEffect(() => {
     displayModeRef.current = displayMode;
   }, [displayMode]);
+
+  // Real-rhythm preference, mirrored into a ref so the canvas loop reads
+  // it without forcing a re-render on toggle.
+  const { realRhythm } = useRealRhythm();
+  const realRhythmRef = useRef(realRhythm);
+  useEffect(() => {
+    realRhythmRef.current = realRhythm;
+  }, [realRhythm]);
   const toggleDisplayMode = useCallback(() => {
     setDisplayMode((prev) => {
       const next: DisplayMode = prev === 'linear' ? 'circular' : 'linear';
@@ -379,7 +388,16 @@ export function Practice() {
 
       // ── Paint (mode-specific) ──────────────────────────────────────────
       if (displayModeRef.current === 'circular' && scheduler) {
-        paintCircular(ctx, w, h, scheduler, renderNow, outcomesRef.current, firstBeatAtRef.current);
+        paintCircular(
+          ctx,
+          w,
+          h,
+          scheduler,
+          renderNow,
+          outcomesRef.current,
+          firstBeatAtRef.current,
+          realRhythmRef.current,
+        );
       } else if (scheduler) {
         paintLinear(ctx, w, h, scheduler, renderNow, outcomesRef.current);
       } else {
@@ -944,6 +962,7 @@ function paintCircular(
   renderNow: number,
   outcomes: Map<number, BeatResult & { at: number }>,
   firstBeatAt: number,
+  realRhythm: boolean,
 ) {
   const cx = w / 2;
   const cy = h / 2;
@@ -952,6 +971,13 @@ function paintCircular(
   if (cycleSeconds <= 0) return;
   const intervalLen = scheduler['options'].toque.intervals.length;
   const slotCount = intervalLen * 2;
+  // Slot 0 of the pattern lands at 3 o'clock (angle 0) instead of
+  // 12 o'clock — the previous −π/2 baseline is gone. The optional
+  // realRhythm phase shift moves the whole frame an extra slot
+  // clockwise so the trailing rest takes the 3 o'clock seat. Sweep,
+  // beats, and detected notes all read from the same `phase` so
+  // audio↔visual sync is preserved.
+  const phase = realRhythm ? (2 * Math.PI) / intervalLen : 0;
 
   // Background ring
   ctx.strokeStyle = '#1a2135';
@@ -971,7 +997,7 @@ function paintCircular(
 
   // Slot dividers — every eighth-note position. Downbeats stronger.
   for (let i = 0; i < slotCount; i++) {
-    const angle = (i / slotCount) * Math.PI * 2 - Math.PI / 2;
+    const angle = (i / slotCount) * Math.PI * 2 + phase;
     const r1 = radius - radius * 0.1;
     const r2 = radius + radius * 0.1;
     ctx.strokeStyle = i % 2 === 0 ? '#2a3556' : '#1f2740';
@@ -997,7 +1023,7 @@ function paintCircular(
   // Target glyphs around the ring
   for (const beat of cycleBeats) {
     const tInCycle = beat.beatTime - cycleStart;
-    const angle = (tInCycle / cycleSeconds) * Math.PI * 2 - Math.PI / 2;
+    const angle = (tInCycle / cycleSeconds) * Math.PI * 2 + phase;
     const bx = cx + radius * Math.cos(angle);
     const by = cy + radius * Math.sin(angle);
     drawTarget(ctx, beat, bx, by, outcomes.get(beat.id));
@@ -1010,7 +1036,7 @@ function paintCircular(
     const note = notes[i]!;
     const tSinceCycleStart = note.timestamp - cycleStart;
     if (tSinceCycleStart < -0.2 || tSinceCycleStart > cycleSeconds + 0.05) continue;
-    const angle = (tSinceCycleStart / cycleSeconds) * Math.PI * 2 - Math.PI / 2;
+    const angle = (tSinceCycleStart / cycleSeconds) * Math.PI * 2 + phase;
     const dx = cx + innerR * Math.cos(angle);
     const dy = cy + innerR * Math.sin(angle);
     drawDetectedNoteCircular(ctx, note, dx, dy);
@@ -1022,7 +1048,7 @@ function paintCircular(
   if (renderNow >= firstBeatAt) {
     const tInCycle =
       ((renderNow - cycleStart) % cycleSeconds + cycleSeconds) % cycleSeconds;
-    const sweepAngle = (tInCycle / cycleSeconds) * Math.PI * 2 - Math.PI / 2;
+    const sweepAngle = (tInCycle / cycleSeconds) * Math.PI * 2 + phase;
 
     // Comet trail — short, fading
     for (let i = 8; i > 0; i--) {
