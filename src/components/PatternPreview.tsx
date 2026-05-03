@@ -56,7 +56,6 @@ export function PatternPreview({
           <div key={i} className="flex flex-col gap-1">
             <PatternCell
               token={token}
-              accent={i === 0}
               symbolSize={symbolSize}
               tchSymbolSize={tchSymbolSize}
             />
@@ -72,12 +71,10 @@ export function PatternPreview({
 
 function PatternCell({
   token,
-  accent,
   symbolSize,
   tchSymbolSize,
 }: {
   token: IntervalToken;
-  accent: boolean;
   symbolSize: number;
   tchSymbolSize: number;
 }) {
@@ -89,15 +86,9 @@ function PatternCell({
     );
   }
 
-  const ringClass = accent
-    ? 'ring-2 ring-accent/30 ring-offset-1 ring-offset-bg-elev'
-    : '';
-
   if (token === 'tch_tch') {
     return (
-      <div
-        className={`aspect-square rounded-md bg-bg flex items-center justify-center gap-1 border border-border ${ringClass}`}
-      >
+      <div className="aspect-square rounded-md bg-bg flex items-center justify-center gap-1 border border-border">
         <SoundSymbol sound="ch" size={tchSymbolSize} glow={false} />
         <SoundSymbol sound="ch" size={tchSymbolSize} glow={false} />
       </div>
@@ -107,9 +98,7 @@ function PatternCell({
   // Single-glyph cell. Map authoring token to internal Sound.
   const sound: Sound = token === 'tch' ? 'ch' : token;
   return (
-    <div
-      className={`aspect-square rounded-md bg-bg flex items-center justify-center border border-border ${ringClass}`}
-    >
+    <div className="aspect-square rounded-md bg-bg flex items-center justify-center border border-border">
       <SoundSymbol sound={sound} size={symbolSize} />
     </div>
   );
