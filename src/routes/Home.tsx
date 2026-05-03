@@ -122,13 +122,7 @@ export function Home() {
               <span className="text-[10px] font-mono text-text-dim/70 tracking-[0.18em] uppercase">
                 {t(difficultyLabelKey(group.difficulty))}
               </span>
-              <div
-                className={
-                  group.difficulty === 'very_advanced'
-                    ? 'flex flex-col items-start gap-2'
-                    : 'flex flex-wrap gap-2'
-                }
-              >
+              <div className="flex flex-wrap gap-2">
                 {group.toques.map((tq) => {
                   const active = tq.name === toqueName;
                   const disabled = !!tq.comingSoon;
@@ -138,20 +132,16 @@ export function Home() {
                       type="button"
                       onClick={() => !disabled && onPickToque(tq.name)}
                       disabled={disabled}
+                      title={disabled ? t('common.coming_soon') : undefined}
                       className={`px-3.5 py-1.5 rounded-full text-sm border transition ${
                         active && !disabled
                           ? 'bg-accent text-bg border-accent shadow-[0_4px_16px_-6px_rgba(255,138,61,0.5)]'
                           : disabled
-                          ? 'bg-bg-elev/40 text-text-dim/60 border-border/60 cursor-not-allowed'
+                          ? 'bg-bg-elev/40 text-text-dim/60 border-border/60 cursor-not-allowed italic'
                           : 'bg-bg-elev text-text border-border hover:border-border-strong'
                       }`}
                     >
                       {tq.name}
-                      {disabled && (
-                        <span className="ml-1.5 text-[10px] font-mono opacity-70">
-                          {t('common.coming_soon')}
-                        </span>
-                      )}
                     </button>
                   );
                 })}
@@ -161,9 +151,12 @@ export function Home() {
         </div>
 
         <div className="flex flex-col gap-2 w-full md:w-72 md:shrink-0">
-          <div className="flex items-baseline justify-between gap-3">
+          {/* min-h fits two wrapped lines of the longest toque name
+              ("São Bento Grande de Angola") so the description and the
+              pattern preview below don't shift when toggling toques. */}
+          <div className="flex items-baseline justify-between gap-3 min-h-[2.4rem]">
             <SectionLabel>{toque.name}</SectionLabel>
-            <span className="text-[10px] font-mono text-text-dim">
+            <span className="text-[10px] font-mono text-text-dim shrink-0">
               {t('home.default_bpm', { bpm: toque.defaultBpm })}
             </span>
           </div>
