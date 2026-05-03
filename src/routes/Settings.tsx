@@ -82,7 +82,7 @@ export function Settings() {
       const stamp = new Date().toISOString().slice(0, 10);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `berimbau-trainer-backup-${stamp}.json`;
+      a.download = `berimbau-pro-backup-${stamp}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();

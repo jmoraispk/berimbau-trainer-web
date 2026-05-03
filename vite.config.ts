@@ -15,7 +15,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
-        name: 'Berimbau Trainer',
+        name: 'Berimbau Pro',
         short_name: 'Berimbau',
         description: 'Rhythm-accuracy trainer for the berimbau.',
         theme_color: '#0b0f1a',

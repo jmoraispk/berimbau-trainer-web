@@ -1,4 +1,4 @@
-# Berimbau Trainer — Web
+# Berimbau Pro — Web
 
 Rhythm-accuracy trainer for the berimbau (capoeira instrument), as an
 installable PWA. This is **v2**, a ground-up TypeScript rewrite of the

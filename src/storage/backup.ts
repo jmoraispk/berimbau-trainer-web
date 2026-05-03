@@ -58,7 +58,7 @@ export function parseBackup(raw: string): BackupParseResult {
   }
   const obj = parsed as Record<string, unknown>;
   if (obj.app !== 'berimbau-trainer') {
-    return { ok: false, error: "Not a Berimbau Trainer backup (missing app='berimbau-trainer')." };
+    return { ok: false, error: "Not a Berimbau Pro backup (missing app='berimbau-trainer' marker)." };
   }
   if (!Array.isArray(obj.sessions)) {
     return { ok: false, error: 'Missing sessions array.' };

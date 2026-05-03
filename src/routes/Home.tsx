@@ -92,13 +92,14 @@ export function Home() {
 
       <header className="flex flex-col items-center gap-3">
         <img src="/icon.svg" alt="" className="w-20 h-20 drop-shadow-[0_6px_30px_rgba(255,138,61,0.25)]" />
-        <h1
-          className="text-4xl font-semibold tracking-tight bg-clip-text text-transparent"
-          style={{
-            backgroundImage: 'linear-gradient(180deg, #fff 0%, #cfd5ea 100%)',
-          }}
-        >
-          Berimbau Trainer
+        {/* Solid text-token color instead of bg-clip-text + gradient.
+            The clip-to-text trick rendered as a white block in iOS PWA
+            standalone mode because Tailwind v4 doesn't emit the
+            -webkit-background-clip prefix and the gradient painted the
+            full bounding box. The visible difference vs the gradient
+            is negligible. */}
+        <h1 className="text-4xl font-semibold tracking-tight text-text">
+          Berimbau Pro
         </h1>
         <p className="text-text-dim text-center text-sm max-w-sm">{t('home.tagline')}</p>
       </header>
