@@ -37,10 +37,10 @@ const ENTRIES: Entry[] = [
     },
   },
   {
-    version: 'v1',
+    version: 'v-1',
     date: 'archived',
     title: 'Python + Kivy desktop app',
-    body: 'The original Berimbau Trainer — a desktop app written in Python with Kivy. Single-rhythm scoring, no calibration, no PWA, no web. The current app is a ground-up TypeScript rewrite that keeps the goal and discards the codebase.',
+    body: 'Predecessor to the current app — a desktop trainer written in Python with Kivy. Single-rhythm scoring, no calibration, no PWA, no web. The current versioning starts at v0.0.1, so the old app gets v-1 to mark it as "before zero" rather than implying a successor relationship.',
     link: {
       href: 'https://github.com/jmoraispk/berimbau-trainer',
       label: 'jmoraispk/berimbau-trainer',
