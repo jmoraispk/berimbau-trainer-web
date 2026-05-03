@@ -38,7 +38,7 @@ export const pt: Messages = {
   'home.default_bpm': 'padrão {bpm} bpm',
   'home.start_practicing': 'Começar a praticar',
   'home.calibrate': 'Calibrar',
-  'home.recalibrate': 'Recalibrar',
+  'home.recalibrate': 'Calibrar',
   'home.calibration_subtitle': '{count} amostras · salvo {time}',
   'home.recent_sessions': 'Sessões recentes',
   'home.streak': 'sequência de {n} dias',
@@ -125,6 +125,8 @@ export const pt: Messages = {
   'calibrate.level_help_body': 'O medidor mostra o nível ao vivo do microfone. Se ele ficar parado enquanto você toca, provavelmente o microfone errado está selecionado no sistema — verifique as configurações de som do SO, confirme que o navegador tem permissão para o microfone e veja se o volume de entrada não está mudo ou muito baixo.',
   'calibrate.level_help_close': 'Entendi',
   'calibrate.scatter_legend': 'TCH · DONG · DING',
+  'calibrate.pause_cycle': 'Pausar ciclo',
+  'calibrate.resume_cycle': 'Retomar ciclo',
 
   // ── songs ───────────────────────────────────────────────────────────
   'songs.title': 'Músicas',

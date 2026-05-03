@@ -1259,7 +1259,9 @@ function drawHUD(
     ctx.textAlign = 'start';
   }
 
-  // Accuracy readout — centered in circular mode, bottom-left in linear.
+  // Accuracy readout — centered in circular mode, top-left in linear so
+  // the bottom-left has full clearance for the (now larger) outcome
+  // legend below.
   if (displayMode === 'circular') {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1274,32 +1276,43 @@ function drawHUD(
   } else {
     ctx.fillStyle = '#e6e8f0';
     ctx.font = 'bold 28px ui-monospace, Consolas, monospace';
-    ctx.fillText(`${Math.round(accuracy * 100)}%`, 16, h - 56);
+    ctx.fillText(`${Math.round(accuracy * 100)}%`, 16, 44);
     ctx.font = '11px ui-monospace, Consolas, monospace';
     ctx.fillStyle = '#8a93b0';
-    ctx.fillText('accuracy (last 20)', 16, h - 40);
+    ctx.fillText('accuracy (last 20)', 16, 60);
   }
 
-  // Outcome bar — bottom-left, same in both modes.
+  // Outcome breakdown — bottom-left, same in both modes. Labels are
+  // word-form (PERF / GOOD / LATE+ …) instead of single letters so the
+  // chart is self-explanatory at the size we render it.
   const hudLabels: Record<Outcome, string> = {
-    perfect: 'P',
-    good: 'G',
-    wrong_sound: 'W',
-    late_correct: 'L+',
-    late_wrong: 'L-',
-    miss: 'M',
-    mistake: '!',
+    perfect: 'PERF',
+    good: 'GOOD',
+    wrong_sound: 'WRONG',
+    late_correct: 'LATE+',
+    late_wrong: 'LATE-',
+    miss: 'MISS',
+    mistake: 'BAD',
   };
-  let x = 16;
-  const barY = h - 24;
-  ctx.font = '10px ui-monospace, Consolas, monospace';
-  for (const key of OUTCOME_ORDER) {
+  const baseX = 16;
+  const baseY = h - 16;
+  const cellW = 56;
+  const barH = 6;
+  ctx.font = '11px ui-monospace, Consolas, monospace';
+  ctx.fillStyle = '#8a93b0';
+  ctx.fillText('LAST 30 BEATS', baseX, baseY - 38);
+  for (let i = 0; i < OUTCOME_ORDER.length; i++) {
+    const key = OUTCOME_ORDER[i]!;
     const n = counts[key];
+    const x = baseX + i * cellW;
     ctx.fillStyle = n === 0 ? '#2a3048' : OUTCOME_COLORS[key];
-    ctx.fillRect(x, barY, 18, 4);
+    ctx.fillRect(x, baseY - 24, cellW - 6, barH);
+    ctx.fillStyle = n === 0 ? '#5a6480' : '#c9d0e3';
+    ctx.font = 'bold 11px ui-monospace, Consolas, monospace';
+    ctx.fillText(hudLabels[key], x, baseY - 8);
+    ctx.font = '11px ui-monospace, Consolas, monospace';
     ctx.fillStyle = '#8a93b0';
-    ctx.fillText(`${hudLabels[key]}${n > 0 ? n : ''}`, x, barY + 14);
-    x += 30;
+    if (n > 0) ctx.fillText(String(n), x + cellW - 18, baseY - 8);
   }
 }
 

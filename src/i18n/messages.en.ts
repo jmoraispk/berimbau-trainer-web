@@ -124,6 +124,8 @@ export const en = {
   'calibrate.level_help_body': 'The meter shows the live mic level. If it stays flat while you play, the wrong input is probably selected at the OS level — check your system sound settings, confirm the browser has microphone permission, and make sure the input volume isn\'t muted or set very low.',
   'calibrate.level_help_close': 'Got it',
   'calibrate.scatter_legend': 'TCH · DONG · DING',
+  'calibrate.pause_cycle': 'Pause cycle',
+  'calibrate.resume_cycle': 'Resume cycle',
 
   // ── songs ───────────────────────────────────────────────────────────
   'songs.title': 'Songs',

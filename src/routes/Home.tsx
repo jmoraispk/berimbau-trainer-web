@@ -122,7 +122,13 @@ export function Home() {
               <span className="text-[10px] font-mono text-text-dim/70 tracking-[0.18em] uppercase">
                 {t(difficultyLabelKey(group.difficulty))}
               </span>
-              <div className="flex flex-wrap gap-2">
+              <div
+                className={
+                  group.difficulty === 'very_advanced'
+                    ? 'flex flex-col items-start gap-2'
+                    : 'flex flex-wrap gap-2'
+                }
+              >
                 {group.toques.map((tq) => {
                   const active = tq.name === toqueName;
                   const disabled = !!tq.comingSoon;
@@ -161,7 +167,12 @@ export function Home() {
               {t('home.default_bpm', { bpm: toque.defaultBpm })}
             </span>
           </div>
-          <p className="text-xs text-text-dim leading-relaxed">{t(toqueDescKey(toque.name))}</p>
+          {/* min-h reserves room for ~4 lines so the PatternPreview below
+              doesn't bounce when toggling between toques whose descriptions
+              wrap at different lengths (e.g. Angola vs Benguela, EN vs PT). */}
+          <p className="text-xs text-text-dim leading-relaxed min-h-[5rem]">
+            {t(toqueDescKey(toque.name))}
+          </p>
           <PatternPreview toque={toque} cellSize="compact" />
         </div>
       </section>

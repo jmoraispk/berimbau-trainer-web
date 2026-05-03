@@ -46,6 +46,14 @@ const STRIKE_SEC = 0.4;
 // resonance. 250 ms is comfortable inside the 3 s cycle.
 const QUICK_REFRACTORY_SEC = 0.25;
 
+// Strike acceptance window inside the cycle. The visible "PLAY" pulse
+// runs [PREP_SEC, PREP_SEC + STRIKE_SEC). We accept onsets that land
+// from 200 ms before the cue (anticipation) to 250 ms after (reaction
+// slack). Strikes outside this window — e.g. while the orange ramp is
+// still filling — are ignored, so the cycle visual is meaningful.
+const ACCEPT_PRE_SEC = 0.2;
+const ACCEPT_POST_SEC = 0.25;
+
 type Phase =
   | { kind: 'idle' }
   | { kind: 'starting' }
@@ -62,6 +70,20 @@ export function Calibrate() {
   const lastAcceptedTsRef = useRef(-Infinity);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [samples, setSamples] = useState<CalibrationSample[]>([]);
+  // Cycle phase shared between the visual ring and the capture handler.
+  // The ring drives the rAF loop and writes the current phase here on
+  // every tick; the capture handler reads it to decide whether the
+  // onset landed inside the strike window.
+  const cyclePhaseRef = useRef(0);
+  const cyclePausedRef = useRef(false);
+  const [cyclePaused, setCyclePaused] = useState(false);
+  const togglePause = () => {
+    setCyclePaused((p) => {
+      const next = !p;
+      cyclePausedRef.current = next;
+      return next;
+    });
+  };
 
   const byClass = useMemo(() => {
     const counts: Record<ClassifiableSound, number> = { dong: 0, ch: 0, ding: 0 };
@@ -85,8 +107,18 @@ export function Calibrate() {
     if (!activeSound) return;
     const unsub = audioBus.subscribeRawCapture((capture) => {
       if (capture.kind === 'quick') {
+        if (cyclePausedRef.current) return;
         if (capture.timestamp - lastAcceptedTsRef.current < QUICK_REFRACTORY_SEC) return;
         if (capture.rms < 0.02) return;
+        // Reject strikes that don't land near the PLAY cue — the worklet
+        // never stops listening, but the cycle visual is the contract
+        // with the user, so anything outside [strike-200ms, strike+250ms]
+        // is treated as a stray sound.
+        const phaseSec = cyclePhaseRef.current;
+        const inWindow =
+          phaseSec >= PREP_SEC - ACCEPT_PRE_SEC &&
+          phaseSec <= PREP_SEC + STRIKE_SEC + ACCEPT_POST_SEC;
+        if (!inWindow) return;
         lastAcceptedTsRef.current = capture.timestamp;
 
         const features = extractFeatures(capture.segment, capture.sampleRate);
@@ -143,6 +175,8 @@ export function Calibrate() {
 
   const advanceStage = () => {
     if (phase.kind !== 'recording') return;
+    setCyclePaused(false);
+    cyclePausedRef.current = false;
     if (phase.stage < STAGES.length - 1) {
       setPhase({ kind: 'recording', stage: phase.stage + 1 });
     } else {
@@ -152,6 +186,8 @@ export function Calibrate() {
 
   const handleRestart = () => {
     setSamples([]);
+    setCyclePaused(false);
+    cyclePausedRef.current = false;
     setPhase({ kind: 'recording', stage: 0 });
   };
 
@@ -216,6 +252,9 @@ export function Calibrate() {
             onPlay={handlePlaySample}
             onDiscard={handleDiscardSample}
             getLevel={() => inputRef.current?.getLevel() ?? 0}
+            paused={cyclePaused}
+            onTogglePause={togglePause}
+            phaseRef={cyclePhaseRef}
             t={t}
           />
           <StageStrip byClass={byClass} activeStage={phase.stage} />
@@ -274,6 +313,9 @@ function RecordingPanel({
   onPlay,
   onDiscard,
   getLevel,
+  paused,
+  onTogglePause,
+  phaseRef,
   t,
 }: {
   activeSound: ClassifiableSound;
@@ -281,12 +323,22 @@ function RecordingPanel({
   onPlay: (sample: CalibrationSample) => void;
   onDiscard: (at: number) => void;
   getLevel: () => number;
+  paused: boolean;
+  onTogglePause: () => void;
+  phaseRef: React.MutableRefObject<number>;
   t: TFn;
 }) {
   return (
     <div className="w-full grid md:grid-cols-[auto_1fr] gap-6 items-start">
-      <div className="flex justify-center md:justify-start">
-        <CycleRing sound={activeSound} t={t} />
+      <div className="flex flex-col items-center md:items-start gap-2">
+        <CycleRing sound={activeSound} paused={paused} phaseRef={phaseRef} t={t} />
+        <button
+          type="button"
+          onClick={onTogglePause}
+          className="btn-ghost px-4 py-1 text-xs"
+        >
+          {paused ? t('calibrate.resume_cycle') : t('calibrate.pause_cycle')}
+        </button>
       </div>
       <div className="flex flex-col gap-3 min-w-0">
         <LevelMeter getLevel={getLevel} t={t} />
@@ -412,20 +464,39 @@ function RecordingActions({
  *
  * Animated via rAF — single SVG re-render per frame. Cheap.
  */
-function CycleRing({ sound, t }: { sound: ClassifiableSound; t: TFn }) {
+function CycleRing({
+  sound,
+  paused,
+  phaseRef,
+  t,
+}: {
+  sound: ClassifiableSound;
+  paused: boolean;
+  phaseRef: React.MutableRefObject<number>;
+  t: TFn;
+}) {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
+    if (paused) {
+      // Freeze: keep whatever phase is on screen, don't advance it.
+      // phaseRef stays at its last value so the capture handler still
+      // sees a stable position (not that it accepts captures while
+      // paused — pausedRef gates that — but consistency is nice).
+      return;
+    }
     let raf = 0;
-    const start = performance.now();
+    const startWall = performance.now();
+    const startPhase = phaseRef.current;
     const tick = (now: number) => {
-      const t = ((now - start) / 1000) % CYCLE_SEC;
+      const t = (startPhase + (now - startWall) / 1000) % CYCLE_SEC;
+      phaseRef.current = t;
       setPhase(t);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [paused, phaseRef]);
 
   // Three-segment envelope:
   //   [0, PREP)            — fill ramps 0→1
