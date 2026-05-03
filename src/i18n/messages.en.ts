@@ -45,12 +45,22 @@ export const en = {
   'home.view_all_stats': 'View all stats →',
   'home.browse_songs': 'Browse {n} songs',
   'home.browse_classes': 'Take a class',
+  'home.browse_roadmap': 'Roadmap',
+  'home.browse_changelog': 'Changelog',
 
   // ── classes ─────────────────────────────────────────────────────────
   'classes.title': 'Classes',
   'classes.subtitle': 'Guided progressions toward each toque and virada.',
   'classes.coming_label': 'Coming soon',
   'classes.coming_body': 'Step-by-step exercises that ramp from a clean basic pulse up to the full toque, plus drills for each virada. Curriculum is in progress — sit tight.',
+
+  // ── roadmap ─────────────────────────────────────────────────────────
+  'roadmap.title': 'Roadmap',
+  'roadmap.subtitle': 'What\'s next, and roughly when.',
+
+  // ── changelog ───────────────────────────────────────────────────────
+  'changelog.title': 'Changelog',
+  'changelog.subtitle': 'What\'s shipped, and what came before.',
   'home.footer': '{n} toques · v2 · web',
   'home.settings_aria': 'Settings',
 

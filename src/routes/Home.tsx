@@ -209,7 +209,7 @@ export function Home() {
 
       <RecentSessionsCard sessions={sessions} t={t} />
 
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
         <Link
           href="/classes"
           className="text-text-dim underline underline-offset-4 hover:text-text"
@@ -221,6 +221,18 @@ export function Home() {
           className="text-text-dim underline underline-offset-4 hover:text-text"
         >
           {t('home.browse_songs', { n: 185 })}
+        </Link>
+        <Link
+          href="/roadmap"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_roadmap')}
+        </Link>
+        <Link
+          href="/changelog"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_changelog')}
         </Link>
       </div>
 
