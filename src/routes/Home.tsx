@@ -13,7 +13,7 @@ import { preloadActiveProfiles } from '@/audio/active-profiles';
 import type { SavedCalibration } from '@/engine/calibration';
 import { listRecentSessions } from '@/storage/sessions-store';
 import type { SessionRecord } from '@/engine/session';
-import { streakDays } from '@/engine/session';
+import { streakDays, streakEmoji } from '@/engine/session';
 import {
   LanguageToggle,
   difficultyLabelKey,
@@ -271,7 +271,9 @@ function RecentSessionsCard({ sessions, t }: { sessions: SessionRecord[]; t: TFn
         <SectionLabel>{t('home.recent_sessions')}</SectionLabel>
         <div className="flex items-center gap-3 text-xs text-text-dim">
           {streak > 0 && (
-            <span className="font-mono">{t('home.streak', { n: streak })}</span>
+            <span className="font-mono">
+              {streakEmoji(streak)} {t('home.streak', { n: streak })}
+            </span>
           )}
           <span>
             {t('home.avg')}{' '}

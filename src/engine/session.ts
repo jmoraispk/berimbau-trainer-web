@@ -42,6 +42,22 @@ export function dayKey(ts: number, now: Date = new Date(ts)): string {
  *
  * Returns 0 if the most recent session is older than "yesterday".
  */
+/**
+ * Tiny gamification glyph based on consecutive practice days. Returns
+ * '' for streaks under 5 so the noise floor stays clean — the badge
+ * shows up only once it means something.
+ *
+ *   5–29   🔥 (on a streak)
+ *   30–99  💎 (serious)
+ *   100+   👑 (showing off)
+ */
+export function streakEmoji(streak: number): string {
+  if (streak >= 100) return '👑';
+  if (streak >= 30) return '💎';
+  if (streak >= 5) return '🔥';
+  return '';
+}
+
 export function streakDays(
   sessions: SessionRecord[],
   now: number = Date.now(),

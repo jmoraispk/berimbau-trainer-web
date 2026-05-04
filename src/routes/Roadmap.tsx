@@ -77,11 +77,6 @@ const SECTIONS: Section[] = [
         body: 'Step-by-step exercises ramping from a clean basic pulse up to the full toque. Prerequisite for the singing curriculum, but useful on its own.',
       },
       {
-        title: 'Mic input picker',
-        status: 'idea',
-        body: 'Pick which microphone the app listens through from inside Settings, instead of relying on whichever input the OS picked as default.',
-      },
-      {
         title: 'Share recordings',
         status: 'idea',
         body: 'Record yourself playing a song or toque and share the audio with another player or your teacher. Builds on user accounts.',
@@ -90,11 +85,6 @@ const SECTIONS: Section[] = [
         title: 'Performance ranking',
         status: 'idea',
         body: 'An objective score for how well you played a song or toque — something more concrete than your teacher\'s nod to measure progress against.',
-      },
-      {
-        title: 'Roadmap voting in-app',
-        status: 'idea',
-        body: 'These up/down buttons will count once accounts ship. Until then they\'re disabled — write to us by email if something here matters to you.',
       },
       {
         title: 'Other capoeira instruments',

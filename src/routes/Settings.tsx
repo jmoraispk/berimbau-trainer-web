@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Link } from 'wouter';
 import type { SavedCalibration } from '@/engine/calibration';
 import type { SessionRecord } from '@/engine/session';
@@ -16,9 +16,10 @@ import {
   buildBackup,
   parseBackup,
 } from '@/storage/backup';
-import { formatRelativeTime, useI18n } from '@/i18n';
+import { formatRelativeTime, useI18n, type TFn } from '@/i18n';
 import { useRealRhythm } from '@/settings/real-rhythm';
 import { usePwaInstall } from '@/settings/use-pwa-install';
+import { getMicDeviceId, setMicDeviceId } from '@/audio/mic-device';
 
 /**
  * Local-data management. Everything in this app lives in the browser
@@ -182,6 +183,21 @@ export function Settings() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          {t('settings.mic_section')}
+        </h2>
+        <Card>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">{t('settings.mic_device_label')}</span>
+            <span className="text-xs text-text-dim leading-relaxed max-w-md">
+              {t('settings.mic_device_hint')}
+            </span>
+          </div>
+          <MicPicker t={t} />
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
           {t('settings.calibration_profile')}
         </h2>
         <Card>
@@ -293,6 +309,28 @@ export function Settings() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          {t('settings.leaderboard')}
+        </h2>
+        <Card>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">
+              {t('settings.leaderboard_title')}
+            </span>
+            <span className="text-xs text-text-dim leading-relaxed max-w-md">
+              {t('settings.leaderboard_body')}
+            </span>
+            <span className="text-xs text-text-dim font-mono mt-1">
+              🔥 5d &nbsp;·&nbsp; 💎 30d &nbsp;·&nbsp; 👑 100d
+            </span>
+          </div>
+          <span className="shrink-0 text-[10px] font-mono uppercase tracking-wider text-text-dim">
+            {t('common.coming_soon')}
+          </span>
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
           {t('settings.backup')}
         </h2>
         <Card>
@@ -347,4 +385,72 @@ function Card({ children }: { children: React.ReactNode }) {
 
 function totalSamples(c: SavedCalibration): number {
   return c.sampleCount.dong + c.sampleCount.ch + c.sampleCount.ding;
+}
+
+/**
+ * Mic input picker. Lists every audioinput device the browser knows
+ * about and writes the chosen deviceId to localStorage; AudioInput
+ * reads that on its next start(). Device labels come up empty until
+ * the user has granted mic permission once — the parent's hint copy
+ * acknowledges that, but we also generate a fallback "Microphone N"
+ * label so unknowns are still distinguishable.
+ */
+function MicPicker({ t }: { t: TFn }) {
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selected, setSelected] = useState<string>(() => getMicDeviceId() ?? '');
+  const [available, setAvailable] = useState(true);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+      setAvailable(false);
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        if (cancelled) return;
+        setDevices(all.filter((d) => d.kind === 'audioinput'));
+      } catch {
+        // Some browsers throw if the page is in an exotic context.
+        // Treat as 'no devices known' rather than crashing.
+        if (!cancelled) setDevices([]);
+      }
+    };
+    void refresh();
+    navigator.mediaDevices.addEventListener('devicechange', refresh);
+    return () => {
+      cancelled = true;
+      navigator.mediaDevices.removeEventListener('devicechange', refresh);
+    };
+  }, []);
+
+  if (!available) {
+    return (
+      <span className="shrink-0 text-xs text-text-dim font-mono">
+        {t('settings.mic_device_unavailable')}
+      </span>
+    );
+  }
+
+  const onChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    const v = e.target.value;
+    setSelected(v);
+    setMicDeviceId(v || null);
+  };
+
+  return (
+    <select
+      value={selected}
+      onChange={onChange}
+      className="shrink-0 max-w-[14rem] truncate rounded-md bg-bg-elev border border-border text-sm px-3 py-1.5 text-text focus:outline-none focus:border-accent"
+    >
+      <option value="">{t('settings.mic_device_default')}</option>
+      {devices.map((d, i) => (
+        <option key={d.deviceId} value={d.deviceId}>
+          {d.label || t('settings.mic_device_unknown', { n: i + 1 })}
+        </option>
+      ))}
+    </select>
+  );
 }

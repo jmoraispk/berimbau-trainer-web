@@ -30,6 +30,7 @@ import type { DetectedNote } from '@/engine/scoring';
 import { audioBus } from './AudioBus';
 import { getActiveProfiles } from './active-profiles';
 import { DEFAULT_PROFILES } from '@/engine/profiles';
+import { getMicDeviceId, setMicDeviceId } from './mic-device';
 
 // The worklet lives in public/audio/ as plain JS so both dev and prod
 // serve it verbatim (Vite's worker transform injects HMR client code
@@ -98,13 +99,31 @@ export class AudioInput {
       );
     }
 
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-    });
+    // Honour the user's saved mic preference. Fall back to the system
+    // default if the saved device is gone (e.g. unplugged headset) —
+    // catching OverconstrainedError / NotFoundError keeps the worklet
+    // working instead of erroring the whole session.
+    const baseAudio: MediaTrackConstraints = {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    };
+    const savedId = getMicDeviceId();
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: savedId ? { ...baseAudio, deviceId: { exact: savedId } } : baseAudio,
+      });
+    } catch (err) {
+      const name = err instanceof Error ? err.name : '';
+      if (savedId && (name === 'OverconstrainedError' || name === 'NotFoundError')) {
+        // Saved device disappeared — clear the stale preference and
+        // retry with the OS default so the user isn't stuck.
+        setMicDeviceId(null);
+        this.stream = await navigator.mediaDevices.getUserMedia({ audio: baseAudio });
+      } else {
+        throw err;
+      }
+    }
 
     this.context = new AudioContext({ latencyHint: 'interactive' });
     await this.context.audioWorklet.addModule(workletUrl);

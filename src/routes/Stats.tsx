@@ -6,6 +6,7 @@ import {
   computeToqueStats,
   dayKey,
   streakDays,
+  streakEmoji,
   totalDaysPracticed,
 } from '@/engine/session';
 import { SOUND_COLORS } from '@/engine/rhythms';
@@ -122,7 +123,7 @@ function LifetimeCard({ sessions, t }: { sessions: SessionRecord[]; t: TFn }) {
       <Stat label={t('stats.days_practiced')} value={String(uniqueDays)} />
       <Stat
         label={t('stats.current_streak')}
-        value={streak > 0 ? `${streak}d` : '—'}
+        value={streak > 0 ? `${streakEmoji(streak)} ${streak}d`.trim() : '—'}
         emphasis={streak > 0}
       />
       <Stat label={t('stats.first_session')} value={firstSessionLabel(sessions)} />
