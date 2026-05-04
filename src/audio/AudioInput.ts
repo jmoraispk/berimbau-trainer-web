@@ -84,6 +84,20 @@ export class AudioInput {
   async start(): Promise<void> {
     if (this.isRunning) return;
 
+    // Browsers only expose navigator.mediaDevices on secure origins
+    // (HTTPS or localhost). On HTTP / LAN IP, the property itself is
+    // undefined — calling getUserMedia on it would throw a useless
+    // 'Cannot read properties of undefined' error. Detect that case
+    // and surface a precise message the UI can show.
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      const insecure = typeof window !== 'undefined' && !window.isSecureContext;
+      throw new Error(
+        insecure
+          ? 'Microphone access requires a secure origin (HTTPS). Open the site over HTTPS — current page is HTTP.'
+          : 'This browser does not expose getUserMedia. Try a recent Chrome, Edge, or Safari.',
+      );
+    }
+
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: false,
