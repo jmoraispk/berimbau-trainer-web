@@ -19,7 +19,7 @@ interface Entry {
 const ENTRIES: Entry[] = [
   {
     version: 'v0.0.1',
-    date: '2026-04',
+    date: '2026-05-03',
     title: 'Initial public release',
     highlights: [
       'Five playable toques: São Bento Pequeno, Angola, São Bento Grande de Angola, Benguela, São Bento Grande (Regional).',

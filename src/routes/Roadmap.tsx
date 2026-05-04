@@ -1,10 +1,17 @@
 import { Link } from 'wouter';
-import { useI18n } from '@/i18n';
+import { useI18n, type TFn } from '@/i18n';
 
 /**
- * Roadmap — what's planned and roughly when. Authored as a static
- * structure right here so it's easy to edit between releases. Status
- * tags use a small palette: in-progress, planning, shipped, idea.
+ * Roadmap — what's planned, plus the ideas pile.
+ *
+ * Authored as a static structure right here so it's easy to edit
+ * between releases. Three sections, color-coded by certainty:
+ *
+ *   Now (in flight) — the one or two things actively being built
+ *   Q3 2026 (planned) — concrete commitments for the next ~quarter
+ *   Ideas — everything else; visible so people can vote on them
+ *
+ * Status palette: in_progress · planning · shipped · idea.
  */
 
 type Status = 'in_progress' | 'planning' | 'shipped' | 'idea';
@@ -17,14 +24,18 @@ interface Item {
 
 interface Section {
   heading: string;
-  /** Hex color for the timeline marker — fades from accent (now) to dim (far). */
+  /** Hex color for the timeline marker. */
   accent: string;
   items: Item[];
+  /** When true, the cards in this section show up/down vote buttons.
+   *  Wired through to a real voting backend once accounts ship — for
+   *  now they're disabled with a tooltip. */
+  votable?: boolean;
 }
 
 const SECTIONS: Section[] = [
   {
-    heading: 'Q2 2026 — in flight',
+    heading: 'Now — in flight',
     accent: '#ff8a3d',
     items: [
       {
@@ -35,30 +46,9 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    heading: 'Q3 2026 — next up',
+    heading: 'Q3 2026 — planned',
     accent: '#f2b640',
     items: [
-      {
-        title: 'Classes: berimbau timeline',
-        status: 'planning',
-        body: 'Guided progressions toward each toque — short drills that ramp from a clean basic pulse up to the full pattern. Skippable so people who already know a toque can jump ahead.',
-      },
-      {
-        title: 'Mic input picker',
-        status: 'planning',
-        body: 'Pick which microphone the app listens through from inside Settings, instead of relying on whichever input the OS picked as default.',
-      },
-    ],
-  },
-  {
-    heading: 'Q4 2026 — bigger lifts',
-    accent: '#64b4f0',
-    items: [
-      {
-        title: 'Classes: singing timeline',
-        status: 'planning',
-        body: 'Once the rhythms are solid, layer corridos and ladainhas on top — singing while keeping the toque steady.',
-      },
       {
         title: 'Per-toque viradas',
         status: 'planning',
@@ -67,18 +57,44 @@ const SECTIONS: Section[] = [
       {
         title: 'User accounts + cloud sync',
         status: 'planning',
-        body: 'Optional sign-in so calibration, sessions and settings follow you between phone and laptop. The app stays usable without an account — local-first remains the default.',
+        body: 'Optional sign-in so calibration, sessions and settings follow you between phone and laptop. The app stays usable without an account — local-first remains the default. May land earlier in Q2 if the backend stack lands fast.',
+      },
+      {
+        title: 'Singing curriculum',
+        status: 'planning',
+        body: 'Once the rhythms are solid, layer corridos and ladainhas on top — singing while keeping the toque steady. Builds on the berimbau-only progression in the ideas pile.',
       },
     ],
   },
   {
-    heading: '2027 and beyond',
+    heading: 'Ideas — vote them up',
     accent: '#5a6480',
+    votable: true,
     items: [
       {
-        title: 'Roadmap voting',
+        title: 'Classes: berimbau-only progression',
         status: 'idea',
-        body: 'Once accounts ship, upvote roadmap items right here so we know which ones to prioritise next. Until then, GitHub Issues reactions stand in.',
+        body: 'Step-by-step exercises ramping from a clean basic pulse up to the full toque. Prerequisite for the singing curriculum, but useful on its own.',
+      },
+      {
+        title: 'Mic input picker',
+        status: 'idea',
+        body: 'Pick which microphone the app listens through from inside Settings, instead of relying on whichever input the OS picked as default.',
+      },
+      {
+        title: 'Share recordings',
+        status: 'idea',
+        body: 'Record yourself playing a song or toque and share the audio with another player or your teacher. Builds on user accounts.',
+      },
+      {
+        title: 'Performance ranking',
+        status: 'idea',
+        body: 'An objective score for how well you played a song or toque — something more concrete than your teacher\'s nod to measure progress against.',
+      },
+      {
+        title: 'Roadmap voting in-app',
+        status: 'idea',
+        body: 'These up/down buttons will count once accounts ship. Until then they\'re disabled — write to us by email if something here matters to you.',
       },
       {
         title: 'Other capoeira instruments',
@@ -119,11 +135,11 @@ export function Roadmap() {
 
       {/* Vertical timeline.
        *
-       * The track is a 1px line absolutely positioned on the left of the
-       * <ol>. Each <li> (one per section) draws its own colored dot on
-       * the track and stacks the section's item cards to the right.
-       * Section accents fade from bright orange (now) to dim slate
-       * (far future) so the eye reads the chronology at a glance.
+       * The track is a 1px gradient line absolutely positioned on the
+       * left of the <ol>. Each <li> (one per section) draws its own
+       * colored dot on the track and stacks the section's item cards
+       * to the right. Accents fade Now → Q3 → Ideas (orange → amber →
+       * slate) so the eye reads the chronology at a glance.
        */}
       <ol className="relative flex flex-col gap-8 pl-7">
         <span
@@ -147,20 +163,23 @@ export function Roadmap() {
               {section.items.map((item, i) => (
                 <li
                   key={i}
-                  className="card flex flex-col gap-1.5 px-4 py-3 hover:border-border-strong transition"
+                  className="card flex items-start gap-3 px-4 py-3 hover:border-border-strong transition"
                 >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-sm font-medium">{item.title}</span>
-                    <span
-                      className="text-[10px] font-mono uppercase tracking-wider shrink-0"
-                      style={{ color: STATUS_COLOR[item.status] }}
-                    >
-                      {STATUS_LABEL[item.status]}
-                    </span>
+                  {section.votable && <VoteButtons t={t} />}
+                  <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm font-medium">{item.title}</span>
+                      <span
+                        className="text-[10px] font-mono uppercase tracking-wider shrink-0"
+                        style={{ color: STATUS_COLOR[item.status] }}
+                      >
+                        {STATUS_LABEL[item.status]}
+                      </span>
+                    </div>
+                    {item.body && (
+                      <p className="text-xs text-text-dim leading-relaxed">{item.body}</p>
+                    )}
                   </div>
-                  {item.body && (
-                    <p className="text-xs text-text-dim leading-relaxed">{item.body}</p>
-                  )}
                 </li>
               ))}
             </ul>
@@ -168,19 +187,51 @@ export function Roadmap() {
         ))}
       </ol>
 
-      {/* Feature requests outsourced to GitHub Issues until accounts +
-       *  in-app voting land. Reactions on issues act as upvotes. */}
+      {/* Feature requests go to email until in-app voting + accounts
+       *  ship. mailto opens the user's mail client with subject + body
+       *  pre-filled — easier than asking them to copy a URL. */}
       <section className="flex flex-col items-center gap-2 pt-2 text-center">
         <p className="text-sm text-text-dim max-w-md">{t('roadmap.request_intro')}</p>
         <a
-          href="https://github.com/jmoraispk/berimbau-trainer-web/issues/new"
-          target="_blank"
-          rel="noreferrer"
+          href={`mailto:hi@berimbau.pro?subject=${encodeURIComponent('Feature request — Berimbau Pro')}`}
           className="btn-ghost"
         >
           {t('roadmap.request_button')} ↗
         </a>
       </section>
     </main>
+  );
+}
+
+/**
+ * Up/down vote pills, currently disabled with a tooltip explaining
+ * the dependency on user accounts. Layout-stable: same width whether
+ * the buttons are interactive or not, so the rest of the card doesn't
+ * shift when this becomes wired up.
+ */
+function VoteButtons({ t }: { t: TFn }) {
+  const tip = t('roadmap.vote_disabled_tooltip');
+  return (
+    <div className="shrink-0 flex flex-col items-center gap-1 select-none">
+      <button
+        type="button"
+        disabled
+        title={tip}
+        aria-label={t('roadmap.vote_up_aria')}
+        className="w-7 h-6 rounded-md bg-bg/60 border border-border/60 text-text-dim/50 hover:border-border-strong hover:text-text disabled:cursor-not-allowed flex items-center justify-center text-xs"
+      >
+        ▲
+      </button>
+      <span className="text-[10px] font-mono text-text-dim/60 tabular-nums">0</span>
+      <button
+        type="button"
+        disabled
+        title={tip}
+        aria-label={t('roadmap.vote_down_aria')}
+        className="w-7 h-6 rounded-md bg-bg/60 border border-border/60 text-text-dim/50 hover:border-border-strong hover:text-text disabled:cursor-not-allowed flex items-center justify-center text-xs"
+      >
+        ▼
+      </button>
+    </div>
   );
 }

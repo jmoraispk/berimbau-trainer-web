@@ -48,6 +48,7 @@ export const pt: Messages = {
   'home.browse_classes': 'Fazer uma aula',
   'home.browse_roadmap': 'Roteiro',
   'home.browse_changelog': 'Histórico',
+  'home.browse_about': 'Sobre',
 
   // ── classes ─────────────────────────────────────────────────────────
   'classes.title': 'Aulas',
@@ -58,8 +59,19 @@ export const pt: Messages = {
   // ── roadmap ─────────────────────────────────────────────────────────
   'roadmap.title': 'Roteiro',
   'roadmap.subtitle': 'O que vem aí — e quando, mais ou menos.',
-  'roadmap.request_intro': 'Tem uma ideia, ou quer apoiar uma das que estão aí? Abra uma issue no GitHub — as reações servem de voto até que o voto dentro do app chegue.',
+  'roadmap.request_intro': 'Tem uma ideia, ou quer apoiar um dos itens acima? Mande um e-mail para hi@berimbau.pro. O voto dentro do app chega com as contas de usuário.',
   'roadmap.request_button': 'Pedir uma funcionalidade',
+  'roadmap.vote_disabled_tooltip': 'O voto vai abrir quando as contas de usuário chegarem.',
+  'roadmap.vote_up_aria': 'Votar a favor',
+  'roadmap.vote_down_aria': 'Votar contra',
+
+  // ── about ──────────────────────────────────────────────────────────
+  'about.title': 'Sobre',
+  'about.subtitle': 'Por que isto existe.',
+  'about.problem': 'Capoeira é arte marcial, dança e música em uma só prática. A maioria das escolas ensina bem o movimento; a parte musical — tocar o berimbau, cantar corridos e ladainhas — é muito mais difícil de aprender sozinho. O material está quase todo em português, não há um currículo on-line formal, e quase não existe forma objetiva de saber se o ritmo que você está tocando está certo.',
+  'about.what_it_does': 'O Berimbau Pro tenta fechar essa lacuna. Ele te escuta pelo microfone e dá uma pontuação em tempo real contra o toque escolhido, em inglês ou português, em qualquer dispositivo. O objetivo é te dar um jeito de praticar a música sozinho — toques, viradas, canções — para que quando você entrar na bateria de uma roda de verdade, você dê conta.',
+  'about.where_its_going': 'No médio prazo: aulas que vão da pulsação básica até o toque completo, depois canto por cima, e eventualmente a possibilidade de você compartilhar gravações e ser avaliado, para ter algo mais concreto que o aceno do mestre para medir progresso.',
+  'about.pricing': 'O app é local-first, bilíngue e gratuito para começar. Sincronização na nuvem, compartilhamento e ranking ficarão num plano pago quando as contas chegarem. Os ritmos em si continuam grátis para sempre.',
 
   // ── changelog ───────────────────────────────────────────────────────
   'changelog.title': 'Histórico',
@@ -207,6 +219,12 @@ export const pt: Messages = {
   'settings.import_done': '{sessions} sessões importadas{maybe_calibration}.',
   'settings.import_failed': 'Falha na importação: {reason}',
   'settings.import_failed_generic': 'Falha na importação.',
+  'settings.install_section': 'Instalar',
+  'settings.install_title': 'Instalar como aplicativo',
+  'settings.install_body_can_prompt': 'Adicione o Berimbau Pro à tela inicial para abrir mais rápido e usar off-line. Sem loja, sem conta.',
+  'settings.install_body_ios': 'No iPhone: toque no ícone de Compartilhar no Safari e em "Adicionar à Tela de Início". O iOS não expõe um botão de instalação dentro do app.',
+  'settings.install_body_unavailable': 'Este navegador não permite instalação de PWA pela própria página. Tente Chrome, Edge ou Safari no iPhone.',
+  'settings.install_button': 'Instalar',
   'settings.display': 'Exibição',
   'settings.real_rhythm_label': 'Ritmo real',
   'settings.real_rhythm_body': 'Desloca o padrão visual em uma casa para que o silêncio entre os ciclos fique às 3 h — mais próximo de como o capoeirista conta o toque. O áudio não muda. Experimental.',

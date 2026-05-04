@@ -8,6 +8,7 @@ import { Stats } from './routes/Stats';
 import { Classes } from './routes/Classes';
 import { Roadmap } from './routes/Roadmap';
 import { Changelog } from './routes/Changelog';
+import { About } from './routes/About';
 
 // Songs routes are code-split — the 185-song catalog is ~150 KB, no reason
 // to ship it in the initial bundle when only a subset of users open it.
@@ -32,6 +33,7 @@ export function App() {
       <Route path="/classes" component={Classes} />
       <Route path="/roadmap" component={Roadmap} />
       <Route path="/changelog" component={Changelog} />
+      <Route path="/about" component={About} />
       <Route path="/songs">
         <Suspense fallback={SongsFallback}>
           <Songs />

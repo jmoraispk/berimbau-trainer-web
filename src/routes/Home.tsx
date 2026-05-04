@@ -232,6 +232,12 @@ export function Home() {
         >
           {t('home.browse_changelog')}
         </Link>
+        <Link
+          href="/about"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_about')}
+        </Link>
       </div>
 
       <footer className="text-text-dim text-[10px] font-mono tracking-wider mt-auto">

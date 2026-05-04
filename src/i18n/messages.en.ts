@@ -47,6 +47,7 @@ export const en = {
   'home.browse_classes': 'Take a class',
   'home.browse_roadmap': 'Roadmap',
   'home.browse_changelog': 'Changelog',
+  'home.browse_about': 'About',
 
   // ── classes ─────────────────────────────────────────────────────────
   'classes.title': 'Classes',
@@ -57,8 +58,19 @@ export const en = {
   // ── roadmap ─────────────────────────────────────────────────────────
   'roadmap.title': 'Roadmap',
   'roadmap.subtitle': 'What\'s next, and roughly when.',
-  'roadmap.request_intro': 'Have an idea, or want to upvote one of these? Open an issue on GitHub — reactions act as upvotes until in-app voting ships.',
+  'roadmap.request_intro': 'Have an idea, or want to nudge one of the items above? Drop us a line at hi@berimbau.pro. In-app voting comes with user accounts.',
   'roadmap.request_button': 'Request a feature',
+  'roadmap.vote_disabled_tooltip': 'Voting opens once user accounts ship.',
+  'roadmap.vote_up_aria': 'Upvote',
+  'roadmap.vote_down_aria': 'Downvote',
+
+  // ── about ──────────────────────────────────────────────────────────
+  'about.title': 'About',
+  'about.subtitle': 'Why this exists.',
+  'about.problem': 'Capoeira is martial art, dance, and music in one. Most schools teach the movement well; the music side — playing the berimbau, singing corridos and ladainhas — is far harder to pick up alone. Most material is in Portuguese, there is no formal online curriculum, and almost no objective way to tell whether the rhythm you are playing is right.',
+  'about.what_it_does': 'Berimbau Pro tries to close that gap. It listens to you through the microphone and scores you in real time against a chosen toque, in English or Portuguese, on any device. The goal is to give you a way to practice the music alone — toques, viradas, songs — so that when you join the bateria in a real roda, you can hold your own.',
+  'about.where_its_going': 'Longer term: classes that ramp you from a clean basic pulse up to the full toque, then layer singing on top, and eventually let you share recordings and rank them so you have something more concrete than your teacher\'s nod to measure progress against.',
+  'about.pricing': 'The app is local-first, bilingual, and free to start. Cloud sync, community sharing, and ranking will sit behind a paid tier when accounts ship. The rhythms themselves stay free forever.',
 
   // ── changelog ───────────────────────────────────────────────────────
   'changelog.title': 'Changelog',
@@ -206,6 +218,12 @@ export const en = {
   'settings.import_done': 'Imported {sessions} sessions{maybe_calibration}.',
   'settings.import_failed': 'Import failed: {reason}',
   'settings.import_failed_generic': 'Import failed.',
+  'settings.install_section': 'Install',
+  'settings.install_title': 'Install as an app',
+  'settings.install_body_can_prompt': 'Add Berimbau Pro to your home screen for faster launch and offline use. No store, no account.',
+  'settings.install_body_ios': 'On iPhone: tap the Share icon in Safari, then "Add to Home Screen". iOS doesn\'t expose an in-app install button.',
+  'settings.install_body_unavailable': 'This browser doesn\'t support PWA installs from inside the page. Try Chrome, Edge, or Safari on iPhone.',
+  'settings.install_button': 'Install',
   'settings.display': 'Display',
   'settings.real_rhythm_label': 'Real rhythm',
   'settings.real_rhythm_body': 'Shift the visual pattern by one slot so the silence between cycles falls at 3 o\'clock — closer to how a capoeirista counts the toque. Audio is unchanged. Experimental.',

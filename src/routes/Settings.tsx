@@ -18,6 +18,7 @@ import {
 } from '@/storage/backup';
 import { formatRelativeTime, useI18n } from '@/i18n';
 import { useRealRhythm } from '@/settings/real-rhythm';
+import { usePwaInstall } from '@/settings/use-pwa-install';
 
 /**
  * Local-data management. Everything in this app lives in the browser
@@ -30,6 +31,7 @@ type Busy = 'calibration' | 'sessions' | 'export' | 'import' | null;
 export function Settings() {
   const { t } = useI18n();
   const { realRhythm, setRealRhythm } = useRealRhythm();
+  const install = usePwaInstall();
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [busy, setBusy] = useState<Busy>(null);
@@ -148,6 +150,35 @@ export function Settings() {
           {t('common.back')}
         </Link>
       </header>
+
+      {install.status !== 'already-installed' && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+            {t('settings.install_section')}
+          </h2>
+          <Card>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{t('settings.install_title')}</span>
+              <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                {install.status === 'can-prompt'
+                  ? t('settings.install_body_can_prompt')
+                  : install.status === 'ios-manual'
+                  ? t('settings.install_body_ios')
+                  : t('settings.install_body_unavailable')}
+              </span>
+            </div>
+            {install.status === 'can-prompt' && (
+              <button
+                type="button"
+                onClick={() => void install.prompt()}
+                className="shrink-0 btn-primary px-4 py-1.5 text-sm"
+              >
+                {t('settings.install_button')}
+              </button>
+            )}
+          </Card>
+        </section>
+      )}
 
       <section className="flex flex-col gap-2">
         <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
