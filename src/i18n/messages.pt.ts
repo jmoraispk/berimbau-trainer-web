@@ -58,6 +58,8 @@ export const pt: Messages = {
   // ── roadmap ─────────────────────────────────────────────────────────
   'roadmap.title': 'Roteiro',
   'roadmap.subtitle': 'O que vem aí — e quando, mais ou menos.',
+  'roadmap.request_intro': 'Tem uma ideia, ou quer apoiar uma das que estão aí? Abra uma issue no GitHub — as reações servem de voto até que o voto dentro do app chegue.',
+  'roadmap.request_button': 'Pedir uma funcionalidade',
 
   // ── changelog ───────────────────────────────────────────────────────
   'changelog.title': 'Histórico',

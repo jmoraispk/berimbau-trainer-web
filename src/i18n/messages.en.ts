@@ -57,6 +57,8 @@ export const en = {
   // ── roadmap ─────────────────────────────────────────────────────────
   'roadmap.title': 'Roadmap',
   'roadmap.subtitle': 'What\'s next, and roughly when.',
+  'roadmap.request_intro': 'Have an idea, or want to upvote one of these? Open an issue on GitHub — reactions act as upvotes until in-app voting ships.',
+  'roadmap.request_button': 'Request a feature',
 
   // ── changelog ───────────────────────────────────────────────────────
   'changelog.title': 'Changelog',
