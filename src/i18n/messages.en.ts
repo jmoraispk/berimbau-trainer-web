@@ -48,6 +48,15 @@ export const en = {
   'home.browse_roadmap': 'Roadmap',
   'home.browse_changelog': 'Changelog',
   'home.browse_about': 'About',
+  'home.browse_leaderboard': 'Leaderboard',
+
+  // ── leaderboard ─────────────────────────────────────────────────────
+  'leaderboard.title': 'Leaderboard',
+  'leaderboard.subtitle': 'How your toques stack up against other players.',
+  'leaderboard.body': 'The leaderboard goes live with user accounts. Sign in once accounts ship and your best runs land here automatically. Streaks unlock a glyph next to your name:',
+  'leaderboard.streak_5': '5-day streak',
+  'leaderboard.streak_30': '30 days',
+  'leaderboard.streak_100': '100 days',
 
   // ── classes ─────────────────────────────────────────────────────────
   'classes.title': 'Classes',

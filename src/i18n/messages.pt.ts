@@ -49,6 +49,15 @@ export const pt: Messages = {
   'home.browse_roadmap': 'Roteiro',
   'home.browse_changelog': 'Histórico',
   'home.browse_about': 'Sobre',
+  'home.browse_leaderboard': 'Ranking',
+
+  // ── leaderboard ─────────────────────────────────────────────────────
+  'leaderboard.title': 'Ranking',
+  'leaderboard.subtitle': 'Como seus toques se comparam aos de outros jogadores.',
+  'leaderboard.body': 'O ranking entra no ar com as contas de usuário. Entre na sua conta quando elas chegarem e seus melhores resultados aparecem aqui automaticamente. As sequências de prática liberam um símbolo ao lado do seu nome:',
+  'leaderboard.streak_5': 'sequência de 5 dias',
+  'leaderboard.streak_30': '30 dias',
+  'leaderboard.streak_100': '100 dias',
 
   // ── classes ─────────────────────────────────────────────────────────
   'classes.title': 'Aulas',

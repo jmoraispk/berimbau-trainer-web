@@ -221,6 +221,12 @@ export function Home() {
           {t('home.browse_songs', { n: 185 })}
         </Link>
         <Link
+          href="/leaderboard"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_leaderboard')}
+        </Link>
+        <Link
           href="/roadmap"
           className="text-text-dim underline underline-offset-4 hover:text-text"
         >
