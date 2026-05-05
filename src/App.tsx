@@ -6,6 +6,7 @@ import { Calibrate } from './routes/Calibrate';
 import { Settings } from './routes/Settings';
 import { Stats } from './routes/Stats';
 import { Classes } from './routes/Classes';
+import { Class } from './routes/Class';
 import { Roadmap } from './routes/Roadmap';
 import { Changelog } from './routes/Changelog';
 import { About } from './routes/About';
@@ -32,6 +33,9 @@ export function App() {
       <Route path="/settings" component={Settings} />
       <Route path="/stats" component={Stats} />
       <Route path="/classes" component={Classes} />
+      <Route path="/classes/:id">
+        {(params) => <Class params={params as { id: string }} />}
+      </Route>
       <Route path="/roadmap" component={Roadmap} />
       <Route path="/changelog" component={Changelog} />
       <Route path="/about" component={About} />
