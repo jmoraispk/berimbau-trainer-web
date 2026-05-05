@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from 'wouter';
 import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
 import { Metronome } from '@/audio/Metronome';
+import { PlayAlong } from '@/audio/PlayAlong';
 import { PatternPreview } from '@/components/PatternPreview';
 import { SoundSymbol as SoundSymbolImported } from '@/components/SoundSymbol';
 import {
@@ -89,6 +90,8 @@ const BPM_STEP = 5;
 const METRONOME_LOOKAHEAD_SEC = 0.25;
 const METRONOME_PREF_KEY = 'berimbau:metronome';
 const DISPLAY_PREF_KEY = 'berimbau:display';
+const KEYBOARD_PAD_PREF_KEY = 'berimbau:keyboard-pad';
+const PLAY_ALONG_PREF_KEY = 'berimbau:play-along';
 type DisplayMode = 'linear' | 'circular';
 
 export function Practice() {
@@ -107,6 +110,10 @@ export function Practice() {
   const lastDetectedTsRef = useRef(-Infinity);
   const pausedRef = useRef(false);
   const metronomeRef = useRef<Metronome | null>(null);
+  const playAlongRef = useRef<PlayAlong | null>(null);
+  /** Beat-id set so a single look-ahead window doesn't double-schedule the
+   *  same play-along play if the loop visits it twice. */
+  const playedBeatsRef = useRef<Set<number>>(new Set());
   /** Audio-clock time of the scheduler's first beat; used for the count-in. */
   const firstBeatAtRef = useRef(0);
 
@@ -119,7 +126,6 @@ export function Practice() {
   const pauseStartedAtRef = useRef<number | null>(null);
 
   const [status, setStatus] = useState<Status>('idle');
-  const [mode, setMode] = useState<'mic' | 'keyboard'>('mic');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // BPM is adjustable mid-practice. Display value in state; the render
   // loop reads the ref so a BPM bump doesn't re-render until the HUD flash.
@@ -129,6 +135,14 @@ export function Practice() {
   const [metronomeOn, setMetronomeOn] = useState<boolean>(() => {
     if (typeof localStorage === 'undefined') return false;
     return localStorage.getItem(METRONOME_PREF_KEY) === '1';
+  });
+  const [keyboardOn, setKeyboardOn] = useState<boolean>(() => {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(KEYBOARD_PAD_PREF_KEY) === '1';
+  });
+  const [playAlongOn, setPlayAlongOn] = useState<boolean>(() => {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(PLAY_ALONG_PREF_KEY) === '1';
   });
 
   // Display mode: linear (sweeping right→left, default landscape) vs
@@ -196,6 +210,7 @@ export function Practice() {
     firstBeatAtRef.current = firstBeat;
     registeredBeatsRef.current = new Set();
     tickedBeatsRef.current = new Set();
+    playedBeatsRef.current = new Set();
     lastDetectedTsRef.current = now;
     pausedRef.current = false;
     setSummary(null);
@@ -245,6 +260,7 @@ export function Practice() {
     scoringRef.current.reset();
     registeredBeatsRef.current = new Set();
     tickedBeatsRef.current = new Set();
+    playedBeatsRef.current = new Set();
     outcomesRef.current = new Map();
     lastDetectedTsRef.current = now;
     sessionStartRef.current = now;
@@ -285,6 +301,7 @@ export function Practice() {
       firstBeatAtRef.current = firstBeat;
       registeredBeatsRef.current = new Set();
       tickedBeatsRef.current = new Set();
+      playedBeatsRef.current = new Set();
     }
   }, [toque, status]);
 
@@ -356,6 +373,19 @@ export function Practice() {
           ) {
             metronome.scheduleTick(beat.beatTime, beat.accent);
             tickedBeatsRef.current.add(beat.id);
+          }
+          // Play-along uses the same look-ahead window. The PlayAlong
+          // instance no-ops when muted, so toggling the feature mid-
+          // session doesn't need any extra plumbing here.
+          const playAlong = playAlongRef.current;
+          if (
+            !pausedRef.current &&
+            playAlong &&
+            !playedBeatsRef.current.has(beat.id) &&
+            beat.beatTime - renderNow < METRONOME_LOOKAHEAD_SEC
+          ) {
+            playAlong.schedulePlay(beat.beatTime, beat.sound);
+            playedBeatsRef.current.add(beat.id);
           }
         }
 
@@ -501,6 +531,7 @@ export function Practice() {
     scoringRef.current.reset();
     registeredBeatsRef.current = new Set();
     tickedBeatsRef.current = new Set();
+    playedBeatsRef.current = new Set();
     outcomesRef.current = new Map();
     lastDetectedTsRef.current = now;
     sessionStartRef.current = now;
@@ -513,6 +544,7 @@ export function Practice() {
     setBpm(initialBpm);
     const ctx = input.audioContext;
     metronomeRef.current = ctx ? new Metronome(ctx, {}, !metronomeOn) : null;
+    playAlongRef.current = ctx ? new PlayAlong(ctx, {}, !playAlongOn) : null;
     const firstBeat = now + COUNT_IN_SECONDS;
     schedulerRef.current = new ToqueScheduler({
       toque,
@@ -522,6 +554,31 @@ export function Practice() {
     firstBeatAtRef.current = firstBeat;
     setStatus('running');
   };
+
+  const toggleKeyboard = useCallback(() => {
+    setKeyboardOn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(KEYBOARD_PAD_PREF_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const togglePlayAlong = useCallback(() => {
+    setPlayAlongOn((prev) => {
+      const next = !prev;
+      playAlongRef.current?.setMuted(!next);
+      try {
+        localStorage.setItem(PLAY_ALONG_PREF_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   const toggleMetronome = useCallback(() => {
     setMetronomeOn((prev) => {
@@ -536,33 +593,28 @@ export function Practice() {
     });
   }, []);
 
+  // Single entry point. Tries mic first; if the browser refuses
+  // (insecure origin, denied permission, no input device), falls back
+  // to keyboard-only mode so the session still starts. Either way the
+  // physical 1/2/3 keys and the on-screen keyboard pad work — the
+  // pad's visibility is a separate toggle.
   const handleStart = async () => {
     if (status === 'starting' || status === 'running') return;
     setStatus('starting');
     setErrorMsg(null);
+    const input = new AudioInput();
     try {
-      const input = new AudioInput();
       await input.start();
-      setMode('mic');
       beginSession(input);
-    } catch (err) {
-      console.error('[Practice] mic start failed', err);
-      setErrorMsg(err instanceof Error ? err.message : String(err));
-      setStatus('error');
+      return;
+    } catch (micErr) {
+      console.warn('[Practice] mic start failed; falling back to keyboard', micErr);
     }
-  };
-
-  const handleStartKeyboard = async () => {
-    if (status === 'starting' || status === 'running') return;
-    setStatus('starting');
-    setErrorMsg(null);
     try {
-      const input = new AudioInput();
       await input.startKeyboardMode();
-      setMode('keyboard');
       beginSession(input);
     } catch (err) {
-      console.error('[Practice] keyboard-mode start failed', err);
+      console.error('[Practice] keyboard-mode start also failed', err);
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setStatus('error');
     }
@@ -620,18 +672,42 @@ export function Practice() {
           <DisplayModeIcon mode={displayMode} />
         </button>
         {(status === 'running' || status === 'paused') && (
-          <button
-            type="button"
-            onClick={toggleMetronome}
-            className={`w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border text-sm transition ${
-              metronomeOn ? 'border-accent text-accent' : 'border-border text-text-dim hover:text-text'
-            }`}
-            title={metronomeOn ? t('practice.metronome_on') : t('practice.metronome_off')}
-            aria-label={metronomeOn ? t('practice.metronome_on') : t('practice.metronome_off')}
-            aria-pressed={metronomeOn}
-          >
-            <MetronomeIcon on={metronomeOn} />
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={togglePlayAlong}
+              className={`px-2 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border text-[11px] font-mono uppercase tracking-wider transition ${
+                playAlongOn ? 'border-accent text-accent' : 'border-border text-text-dim hover:text-text'
+              }`}
+              title={t('practice.play_along_title')}
+              aria-pressed={playAlongOn}
+            >
+              ♪ {t('practice.play_along')}
+            </button>
+            <button
+              type="button"
+              onClick={toggleKeyboard}
+              className={`px-2 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border text-[11px] font-mono uppercase tracking-wider transition ${
+                keyboardOn ? 'border-accent text-accent' : 'border-border text-text-dim hover:text-text'
+              }`}
+              title={t('practice.keyboard_title')}
+              aria-pressed={keyboardOn}
+            >
+              ⌨ {t('practice.keyboard')}
+            </button>
+            <button
+              type="button"
+              onClick={toggleMetronome}
+              className={`w-9 h-9 flex items-center justify-center rounded-full bg-bg-elev/80 backdrop-blur border text-sm transition ${
+                metronomeOn ? 'border-accent text-accent' : 'border-border text-text-dim hover:text-text'
+              }`}
+              title={metronomeOn ? t('practice.metronome_on') : t('practice.metronome_off')}
+              aria-label={metronomeOn ? t('practice.metronome_on') : t('practice.metronome_off')}
+              aria-pressed={metronomeOn}
+            >
+              <MetronomeIcon on={metronomeOn} />
+            </button>
+          </>
         )}
         {status === 'running' && (
           <button
@@ -675,17 +751,11 @@ export function Practice() {
                     disabled={status === 'starting'}
                     className="px-6 py-2 rounded-full bg-accent text-bg font-semibold disabled:opacity-60"
                   >
-                    {status === 'starting' ? t('practice.starting') : t('practice.start_mic')}
+                    {status === 'starting' ? t('practice.starting') : t('practice.start')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleStartKeyboard}
-                    disabled={status === 'starting'}
-                    className="px-6 py-2 rounded-full bg-bg border border-border text-text-dim hover:text-text disabled:opacity-60"
-                    title={t('practice.keyboard_mode_hint')}
-                  >
-                    {t('practice.try_keyboard')}
-                  </button>
+                  <span className="text-[11px] text-text-dim text-center font-mono">
+                    {t('practice.keyboard_mode_hint')}
+                  </span>
                 </div>
                 {errorMsg && <p className="text-sm text-red-400 text-center">{errorMsg}</p>}
               </>
@@ -694,7 +764,7 @@ export function Practice() {
         </div>
       )}
 
-      {status === 'running' && mode === 'keyboard' && (
+      {(status === 'running' || status === 'paused') && keyboardOn && (
         <KeyboardPad
           onDong={() => inputRef.current?.inject('dong')}
           onCh={() => inputRef.current?.inject('ch')}
