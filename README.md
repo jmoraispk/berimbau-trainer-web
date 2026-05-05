@@ -62,13 +62,57 @@ Functions and migrations from the Supabase CLI.
 ### One-time backend setup
 
 1. Create a Supabase project (free tier, pick São Paulo or US-East).
-2. Open the SQL editor and run the file in
-   `supabase/migrations/20260505000000_initial.sql`. That creates
-   `profiles`, `sessions`, the `leaderboard_view`, RLS policies and
-   the `delete_my_account` RPC.
+2. Apply the schema (see "Migrations" below — either via the SQL
+   editor or via the CLI).
 3. Auth → Providers: enable email + Google (Google needs OAuth client
    id/secret from Google Cloud Console).
-4. Copy the project URL + anon key into `.env`.
+4. Copy the project URL + publishable / anon key into `.env.local`.
+
+### Migrations
+
+Schema lives in `supabase/migrations/*.sql` — one file per migration,
+named `<timestamp>_<slug>.sql`. Three ways to apply them:
+
+**A) SQL editor (one-shot)** — paste the file into Supabase → SQL
+editor → Run. Fine for the first migration; doesn't update the
+CLI's tracking table.
+
+**B) Supabase CLI (local)** — recommended once you've done a
+browser-SSO login. After `pnpm install` (which fetches the CLI
+binary):
+
+```bash
+pnpm exec supabase login                 # browser SSO, one time
+pnpm db:link                             # links to the project ref
+# If you already applied the first migration via the SQL editor:
+pnpm exec supabase migration repair --status applied 20260505000000
+# Future migrations: just write the SQL file then
+pnpm db:push
+```
+
+The convenience scripts live in `package.json`:
+
+```
+pnpm db:link    # supabase link --project-ref sihglhycaqwgjxiyaati
+pnpm db:push    # apply pending migrations
+pnpm db:diff    # generate a migration from current schema drift
+pnpm db:reset   # nuke + re-apply (only run against staging!)
+```
+
+**C) GitHub Actions (auto on push)** — the
+`.github/workflows/db-migrate.yml` workflow runs `supabase db push`
+on every push to `main` that touches a file under
+`supabase/migrations/`. Requires three repo secrets:
+
+| Secret | From |
+|---|---|
+| `SUPABASE_ACCESS_TOKEN` | https://supabase.com/dashboard/account/tokens |
+| `SUPABASE_PROJECT_REF` | the dashboard URL (e.g. `sihglhycaqwgjxiyaati`) |
+| `SUPABASE_DB_PASSWORD` | Supabase → Settings → Database |
+
+Set them at GitHub → repo Settings → Secrets and variables → Actions.
+The workflow fails fast if any of them are missing, so it's safe to
+commit the file before they're configured.
 
 ## Layout
 
