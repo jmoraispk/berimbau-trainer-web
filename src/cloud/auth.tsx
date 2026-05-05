@@ -37,8 +37,6 @@ interface AuthCtx {
   signIn: (email: string, password: string) => Promise<string | null>;
   /** Email + password sign-up. Same return shape. */
   signUp: (email: string, password: string) => Promise<string | null>;
-  /** Magic-link sign-in. Email lands inbox; user clicks. */
-  signInWithMagicLink: (email: string) => Promise<string | null>;
   /** Sign in with Google OAuth. Redirects on success. */
   signInWithGoogle: () => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -55,7 +53,6 @@ const NOOP_CTX: AuthCtx = {
   refreshProfile: async () => {},
   signIn: async () => 'Cloud is not configured.',
   signUp: async () => 'Cloud is not configured.',
-  signInWithMagicLink: async () => 'Cloud is not configured.',
   signInWithGoogle: async () => 'Cloud is not configured.',
   signOut: async () => {},
   updateProfile: async () => 'Cloud is not configured.',
@@ -130,14 +127,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error?.message ?? null;
   };
 
-  const signInWithMagicLink: AuthCtx['signInWithMagicLink'] = async (email) => {
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    return error?.message ?? null;
-  };
-
   const signInWithGoogle: AuthCtx['signInWithGoogle'] = async () => {
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
@@ -168,7 +157,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshProfile,
     signIn,
     signUp,
-    signInWithMagicLink,
     signInWithGoogle,
     signOut,
     updateProfile,

@@ -5,21 +5,20 @@ import { isCloudConfigured } from '@/cloud/supabase';
 import { useI18n } from '@/i18n';
 
 /**
- * Sign-in / sign-up route. Three paths:
+ * Sign-in / sign-up route. Two paths:
  *   - email + password (sign in or sign up depending on mode)
- *   - magic link (email an OTP, click through)
  *   - Google OAuth
  *
  * Falls back to a "cloud not configured" state when env vars are
  * missing, which keeps the offline-only build perfectly usable.
  */
 
-type Mode = 'signin' | 'signup' | 'magic';
+type Mode = 'signin' | 'signup';
 
 export function Auth() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
-  const { user, loading, signIn, signUp, signInWithMagicLink, signInWithGoogle } = useAuth();
+  const { user, loading, signIn, signUp, signInWithGoogle } = useAuth();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -51,17 +50,14 @@ export function Auth() {
     setBusy(true);
     setMsg(null);
     setInfo(null);
-    let err: string | null = null;
-    if (mode === 'signin') err = await signIn(email, password);
-    else if (mode === 'signup') err = await signUp(email, password);
-    else err = await signInWithMagicLink(email);
+    const err =
+      mode === 'signin' ? await signIn(email, password) : await signUp(email, password);
     setBusy(false);
     if (err) {
       setMsg(err);
       return;
     }
     if (mode === 'signup') setInfo(t('auth.signup_check_email'));
-    else if (mode === 'magic') setInfo(t('auth.magic_check_email'));
     else navigate('/profile');
   };
 
@@ -80,7 +76,6 @@ export function Auth() {
       <div className="flex gap-2 text-xs">
         <ModeButton current={mode} target="signin" onClick={setMode} label={t('auth.mode_signin')} />
         <ModeButton current={mode} target="signup" onClick={setMode} label={t('auth.mode_signup')} />
-        <ModeButton current={mode} target="magic" onClick={setMode} label={t('auth.mode_magic')} />
       </div>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
@@ -93,30 +88,22 @@ export function Auth() {
           autoComplete="email"
           className="rounded-md bg-bg-elev border border-border px-3 py-2 text-sm text-text focus:outline-none focus:border-accent"
         />
-        {mode !== 'magic' && (
-          <input
-            type="password"
-            placeholder={t('auth.password')}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            className="rounded-md bg-bg-elev border border-border px-3 py-2 text-sm text-text focus:outline-none focus:border-accent"
-          />
-        )}
+        <input
+          type="password"
+          placeholder={t('auth.password')}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={6}
+          autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+          className="rounded-md bg-bg-elev border border-border px-3 py-2 text-sm text-text focus:outline-none focus:border-accent"
+        />
         <button
           type="submit"
           disabled={busy || loading}
           className="btn-primary disabled:opacity-50"
         >
-          {busy
-            ? '…'
-            : mode === 'signin'
-              ? t('auth.mode_signin')
-              : mode === 'signup'
-                ? t('auth.mode_signup')
-                : t('auth.send_magic')}
+          {busy ? '…' : mode === 'signin' ? t('auth.mode_signin') : t('auth.mode_signup')}
         </button>
       </form>
 
