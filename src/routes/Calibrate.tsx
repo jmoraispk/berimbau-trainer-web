@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
+import { CalibrationScatter } from '@/components/CalibrationScatter';
 import { SOUND_COLORS, SOUND_LABELS } from '@/engine/rhythms';
 import { SoundSymbol } from '@/components/SoundSymbol';
 import { extractFeatures } from '@/engine/features';
@@ -799,7 +800,7 @@ function ReviewPanel({
           );
         })}
       </div>
-      <Scatter samples={samples} />
+      <CalibrationScatter samples={samples} onPlay={onPlay} />
       <div className="flex justify-center gap-3">
         <button type="button" onClick={onRestart} className="btn-secondary">
           {t('calibrate.review_restart')}
@@ -847,66 +848,3 @@ function Saved({
   );
 }
 
-/**
- * Tiny feature-space scatter for the review screen — same axes as the
- * classifier (X = centroid, Y = f0). Helps spot stragglers before saving.
- */
-function Scatter({ samples }: { samples: CalibrationSample[] }) {
-  const W = 360;
-  const H = 160;
-  const padding = 24;
-  const xMin = 0;
-  const xMax = 4000;
-  const yMin = 0;
-  const yMax = 500;
-  const fx = (v: number) => padding + ((v - xMin) / (xMax - xMin)) * (W - padding * 2);
-  const fy = (v: number) => H - padding - ((v - yMin) / (yMax - yMin)) * (H - padding * 2);
-
-  return (
-    <svg
-      width="100%"
-      height={H}
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="xMidYMid meet"
-      className="bg-bg-elev border border-border rounded-xl"
-    >
-      <line x1={padding} y1={H - padding} x2={W - padding} y2={H - padding} stroke="#2a3048" />
-      <line x1={padding} y1={padding} x2={padding} y2={H - padding} stroke="#2a3048" />
-      <text x={W - padding} y={H - 6} textAnchor="end" fontSize="9" fill="#8a93b0">
-        centroid Hz
-      </text>
-      <text x={6} y={padding - 6} fontSize="9" fill="#8a93b0">
-        f0 Hz
-      </text>
-      {samples.map((s, i) => (
-        <circle
-          key={i}
-          cx={fx(s.centroid)}
-          cy={fy(s.f0)}
-          r={4}
-          fill={SOUND_COLORS[s.sound]}
-          opacity={0.85}
-        />
-      ))}
-      {/* Legend — colored dot + label per sound, top-right corner. */}
-      {STAGES.map((sound, i) => {
-        const x = W - padding - 88 + i * 32;
-        const y = padding + 4;
-        return (
-          <g key={sound}>
-            <circle cx={x} cy={y} r={3.5} fill={SOUND_COLORS[sound]} />
-            <text
-              x={x + 6}
-              y={y + 3}
-              fontSize="9"
-              fill="#c9d0e3"
-              fontFamily="ui-monospace, SFMono-Regular, monospace"
-            >
-              {SOUND_LABELS[sound]}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
