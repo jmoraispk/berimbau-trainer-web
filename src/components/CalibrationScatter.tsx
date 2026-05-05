@@ -28,11 +28,15 @@ const H = 280;
 const PAD = { top: 18, right: 18, bottom: 36, left: 46 };
 
 const X_MIN = 0;
-const X_MAX = 4000;
+const X_MAX = 5000;
+// Y goes up to 1200 — the upper bound of autocorrF0's search range —
+// so non-pitched sounds like TCH (which the algorithm reports
+// scattered between ~200–1200 Hz because it can't lock onto a real
+// fundamental) stay on the chart instead of falling off the top.
 const Y_MIN = 0;
-const Y_MAX = 500;
-const X_TICKS = [0, 1000, 2000, 3000, 4000];
-const Y_TICKS = [0, 100, 200, 300, 400, 500];
+const Y_MAX = 1200;
+const X_TICKS = [0, 1000, 2000, 3000, 4000, 5000];
+const Y_TICKS = [0, 200, 400, 600, 800, 1000, 1200];
 
 const SOUNDS: ClassifiableSound[] = ['ch', 'dong', 'ding'];
 const HOVER_RADIUS = 20;
@@ -62,8 +66,12 @@ export function CalibrationScatter({ samples, onPlay }: Props) {
     let bestD2 = HOVER_RADIUS * HOVER_RADIUS;
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i]!;
-      const dx = local.x - fx(s.centroid);
-      const dy = local.y - fy(s.f0);
+      // Match the clamped coordinates the glyph actually rendered at,
+      // so hover lands on edge-clamped outliers correctly.
+      const cx = fx(Math.min(X_MAX, Math.max(X_MIN, s.centroid)));
+      const cy = fy(Math.min(Y_MAX, Math.max(Y_MIN, s.f0)));
+      const dx = local.x - cx;
+      const dy = local.y - cy;
       const d2 = dx * dx + dy * dy;
       if (d2 < bestD2) {
         bestD2 = d2;
@@ -201,17 +209,23 @@ export function CalibrationScatter({ samples, onPlay }: Props) {
         f0 (Hz)
       </text>
 
-      {/* Sample symbols */}
-      {samples.map((s, i) => (
-        <Glyph
-          key={s.at}
-          sound={s.sound}
-          x={fx(s.centroid)}
-          y={fy(s.f0)}
-          size={i === hoverIdx ? 16 : 12}
-          highlight={i === hoverIdx}
-        />
-      ))}
+      {/* Sample symbols. Clamp data to axis bounds so an outlier (e.g.
+          a noisy TCH whose f0 estimate spikes outside 0–1200 Hz) still
+          shows up at the edge instead of disappearing. */}
+      {samples.map((s, i) => {
+        const cx = fx(Math.min(X_MAX, Math.max(X_MIN, s.centroid)));
+        const cy = fy(Math.min(Y_MAX, Math.max(Y_MIN, s.f0)));
+        return (
+          <Glyph
+            key={s.at}
+            sound={s.sound}
+            x={cx}
+            y={cy}
+            size={i === hoverIdx ? 16 : 12}
+            highlight={i === hoverIdx}
+          />
+        );
+      })}
 
       {/* Legend top-right — uses the same Glyph so it doubles as a key */}
       <g transform={`translate(${W - PAD.right - 122}, ${PAD.top + 4})`}>
