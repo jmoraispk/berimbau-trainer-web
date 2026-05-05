@@ -137,6 +137,11 @@ export function Subscribe() {
 
       {err && <p className="text-sm text-red-400 text-center">{err}</p>}
 
+      <section className="card flex flex-col gap-3 px-5 py-4 text-sm text-text-dim leading-relaxed">
+        <h2 className="text-text font-medium">{t('subscribe.guarantee_title')}</h2>
+        <p>{t('subscribe.guarantee_body')}</p>
+      </section>
+
       <p className="text-xs text-text-dim text-center">
         {t('subscribe.fine_print')}
       </p>

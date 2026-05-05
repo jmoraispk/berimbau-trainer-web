@@ -13,7 +13,18 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
+      // includeAssets controls which static files in public/ get
+      // precached by the service worker. The previous list referenced
+      // 'favicon.svg' which doesn't exist (the source is 'icon.svg');
+      // browsers fell back to whatever was cached from an earlier
+      // deploy, which is why the deployed site sometimes showed a
+      // different / stale favicon than localhost.
+      includeAssets: [
+        'icon.svg',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+        'icons/apple-touch-icon.png',
+      ],
       manifest: {
         name: 'Berimbau Pro',
         short_name: 'Berimbau',
@@ -24,6 +35,9 @@ export default defineConfig({
         orientation: 'any',
         start_url: '/',
         icons: [
+          // SVG first so browsers/PWA installers that prefer vectors
+          // pick it up before the PNGs.
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
           { src: 'icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },

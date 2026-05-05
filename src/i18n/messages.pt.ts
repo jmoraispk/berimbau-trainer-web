@@ -145,6 +145,8 @@ export const pt: Messages = {
   'subscribe.already_subscribed': 'Você já é assinante',
   'subscribe.no_price_env': 'Os preços ainda não estão configurados — defina VITE_STRIPE_PRICE_MONTHLY e VITE_STRIPE_PRICE_ANNUAL.',
   'subscribe.fine_print': 'Cancele a qualquer momento em Configurações → Conta. O Stripe processa o pagamento — nunca vemos seu cartão.',
+  'subscribe.guarantee_title': 'Garantia de devolução total em 14 dias, sem perguntas',
+  'subscribe.guarantee_body': 'Se o Berimbau Pro não for divertido, não estiver sendo útil, ou simplesmente você não quiser manter — escreva para hi@berimbau.pro dentro de 14 dias de qualquer cobrança e a gente devolve 100%. Sem questionário, sem fluxograma, sem "tem certeza?". Vale para mensal e anual.',
   'subscribe.cta_disabled': 'Em breve',
   'subscribe.body': 'O plano gratuito cobre prática solo para sempre. O pago libera os recursos de rede:',
   'subscribe.perk_share': 'Compartilhar gravações das suas sessões com outros jogadores.',

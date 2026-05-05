@@ -144,6 +144,8 @@ export const en = {
   'subscribe.already_subscribed': 'You\'re subscribed',
   'subscribe.no_price_env': 'Pricing isn\'t configured yet — set VITE_STRIPE_PRICE_MONTHLY and VITE_STRIPE_PRICE_ANNUAL.',
   'subscribe.fine_print': 'Cancel any time from Settings → Account. Stripe handles the payment — we never see your card.',
+  'subscribe.guarantee_title': '14-day, no-questions-asked money-back guarantee',
+  'subscribe.guarantee_body': 'If Berimbau Pro isn\'t fun, isn\'t useful, or you just don\'t want to keep it — email hi@berimbau.pro within 14 days of any charge and we\'ll refund 100% of it. No survey, no flow chart, no "are you sure?". Applies to monthly and annual.',
   'subscribe.cta_disabled': 'Coming soon',
   'subscribe.body': 'Free tier covers solo practice forever. The paid tier unlocks the network features:',
   'subscribe.perk_share': 'Share recordings of your sessions with other players.',
