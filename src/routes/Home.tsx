@@ -31,12 +31,16 @@ export function Home() {
   const [toqueName, setToqueName] = useState<ToqueName>('Angola');
   const toque = TOQUES[toqueName];
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
+  const [calibrationLoaded, setCalibrationLoaded] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [needsCalibrateWarning, setNeedsCalibrateWarning] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void preloadActiveProfiles().then((saved) => {
-      if (!cancelled) setCalibration(saved);
+      if (cancelled) return;
+      setCalibration(saved);
+      setCalibrationLoaded(true);
     });
     void listRecentSessions(5).then((list) => {
       if (!cancelled) setSessions(list);
@@ -58,6 +62,14 @@ export function Home() {
 
   const start = () => {
     if (toque.comingSoon) return;
+    // Block the start path until we've heard back from IDB about the
+    // saved profile — we don't want to flash the warning during the
+    // first ~ms of the page when calibration is still loading.
+    if (!calibrationLoaded) return;
+    if (!calibration) {
+      setNeedsCalibrateWarning(true);
+      return;
+    }
     const params = new URLSearchParams({
       toque: toqueName,
       bpm: String(toque.defaultBpm),
@@ -249,6 +261,41 @@ export function Home() {
       <footer className="text-text-dim text-[10px] font-mono tracking-wider mt-auto">
         {t('home.footer', { n: totalToques })}
       </footer>
+
+      {needsCalibrateWarning && (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-bg/70 backdrop-blur-sm px-4"
+          onClick={() => setNeedsCalibrateWarning(false)}
+        >
+          <div
+            className="card flex flex-col items-center gap-3 px-6 py-5 max-w-sm w-full text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold">
+              {t('home.calibrate_first_title')}
+            </h2>
+            <p className="text-sm text-text-dim leading-relaxed">
+              {t('home.calibrate_first_body')}
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setNeedsCalibrateWarning(false)}
+                className="btn-ghost"
+              >
+                {t('home.calibrate_first_dismiss')}
+              </button>
+              <Link
+                href="/calibrate"
+                className="btn-primary"
+                onClick={() => setNeedsCalibrateWarning(false)}
+              >
+                {t('home.calibrate_first_cta')}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
