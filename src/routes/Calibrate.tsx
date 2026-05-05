@@ -581,11 +581,15 @@ function SampleGrid({
   samples,
   onPlay,
   onDiscard,
+  hoveredAt,
+  onHoverChange,
   t,
 }: {
   samples: CalibrationSample[];
   onPlay: (sample: CalibrationSample) => void;
   onDiscard: (at: number) => void;
+  hoveredAt?: number | null;
+  onHoverChange?: (at: number | null) => void;
   t: TFn;
 }) {
   if (samples.length === 0) {
@@ -603,6 +607,8 @@ function SampleGrid({
           sample={s}
           onPlay={() => onPlay(s)}
           onDiscard={() => onDiscard(s.at)}
+          highlight={hoveredAt === s.at}
+          onHoverChange={onHoverChange}
           t={t}
         />
       ))}
@@ -614,11 +620,15 @@ function SampleThumbnail({
   sample,
   onPlay,
   onDiscard,
+  highlight = false,
+  onHoverChange,
   t,
 }: {
   sample: CalibrationSample;
   onPlay: () => void;
   onDiscard: () => void;
+  highlight?: boolean;
+  onHoverChange?: (at: number | null) => void;
   t: TFn;
 }) {
   const path = useMemo(() => {
@@ -631,11 +641,19 @@ function SampleThumbnail({
   const color = SOUND_COLORS[sample.sound];
 
   return (
-    <div className="group relative">
+    <div
+      className="group relative"
+      onMouseEnter={() => onHoverChange?.(sample.at)}
+      onMouseLeave={() => onHoverChange?.(null)}
+    >
       <button
         type="button"
         onClick={onPlay}
-        className="w-full block rounded-md bg-bg border border-border hover:border-accent transition overflow-hidden"
+        className={`w-full block rounded-md bg-bg border transition overflow-hidden ${
+          highlight
+            ? 'border-accent shadow-[0_0_0_2px_rgba(255,138,61,0.35)]'
+            : 'border-border hover:border-accent'
+        }`}
         title={t('calibrate.thumbnail_title', {
           f0: sample.f0.toFixed(0),
           centroid: sample.centroid.toFixed(0),
@@ -645,7 +663,7 @@ function SampleThumbnail({
           {onsetX != null && (
             <line x1={onsetX} y1={0} x2={onsetX} y2={36} stroke="#ff8a3d" strokeWidth={0.5} opacity={0.4} />
           )}
-          <path d={path} stroke={color} strokeWidth={1} fill="none" />
+          <path d={path} stroke={color} strokeWidth={highlight ? 1.6 : 1} fill="none" />
         </svg>
       </button>
       <button
@@ -778,6 +796,11 @@ function ReviewPanel({
   t: TFn;
 }) {
   const canSave = STAGES.every((s) => byClass[s] >= MIN_SAMPLES_PER_CLASS);
+  // Cross-highlight between the scatter and the waveform thumbnails.
+  // Lifted up so both children read/write the same value: hover a
+  // scatter point and the matching thumbnail glows; hover a thumbnail
+  // and the matching point in the scatter scales up.
+  const [hoveredAt, setHoveredAt] = useState<number | null>(null);
   return (
     <div className="w-full flex flex-col gap-5">
       <p className="text-text-dim text-sm text-center">
@@ -795,12 +818,24 @@ function ReviewPanel({
                 </span>
                 <TierBadge count={stageSamples.length} t={t} />
               </div>
-              <SampleGrid samples={stageSamples} onPlay={onPlay} onDiscard={onDiscard} t={t} />
+              <SampleGrid
+                samples={stageSamples}
+                onPlay={onPlay}
+                onDiscard={onDiscard}
+                hoveredAt={hoveredAt}
+                onHoverChange={setHoveredAt}
+                t={t}
+              />
             </div>
           );
         })}
       </div>
-      <CalibrationScatter samples={samples} onPlay={onPlay} />
+      <CalibrationScatter
+        samples={samples}
+        onPlay={onPlay}
+        hoveredAt={hoveredAt}
+        onHoverChange={setHoveredAt}
+      />
       <div className="flex justify-center gap-3">
         <button type="button" onClick={onRestart} className="btn-secondary">
           {t('calibrate.review_restart')}

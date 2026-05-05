@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent } from 'react';
+import { useRef, type MouseEvent } from 'react';
 import { SOUND_COLORS, SOUND_LABELS } from '@/engine/rhythms';
 import type { ClassifiableSound } from '@/engine/profiles';
 import type { CalibrationSample } from '@/engine/calibration';
@@ -21,6 +21,10 @@ import type { CalibrationSample } from '@/engine/calibration';
 interface Props {
   samples: CalibrationSample[];
   onPlay?: (sample: CalibrationSample) => void;
+  /** Controlled hover state — the parent owns it so the matching
+   *  thumbnail in the SampleGrid above can highlight in lock-step. */
+  hoveredAt?: number | null;
+  onHoverChange?: (at: number | null) => void;
 }
 
 const W = 480;
@@ -46,9 +50,14 @@ const fx = (v: number) =>
 const fy = (v: number) =>
   H - PAD.bottom - ((v - Y_MIN) / (Y_MAX - Y_MIN)) * (H - PAD.top - PAD.bottom);
 
-export function CalibrationScatter({ samples, onPlay }: Props) {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+export function CalibrationScatter({
+  samples,
+  onPlay,
+  hoveredAt = null,
+  onHoverChange,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const hoverIdx = hoveredAt == null ? -1 : samples.findIndex((s) => s.at === hoveredAt);
 
   // Translate a pointer event into the SVG's viewBox coordinate system,
   // then return the index of the closest sample within HOVER_RADIUS px
@@ -82,16 +91,17 @@ export function CalibrationScatter({ samples, onPlay }: Props) {
   };
 
   const onMove = (e: MouseEvent<SVGSVGElement>) => {
+    if (!onHoverChange) return;
     const i = nearest(e);
-    setHoverIdx(i >= 0 ? i : null);
+    onHoverChange(i >= 0 ? samples[i]!.at : null);
   };
-  const onLeave = () => setHoverIdx(null);
+  const onLeave = () => onHoverChange?.(null);
   const onClick = (e: MouseEvent<SVGSVGElement>) => {
     const i = nearest(e);
     if (i >= 0 && onPlay) onPlay(samples[i]!);
   };
 
-  const hovered = hoverIdx != null ? samples[hoverIdx] : null;
+  const hovered = hoverIdx >= 0 ? samples[hoverIdx] : null;
 
   return (
     <svg
@@ -215,14 +225,15 @@ export function CalibrationScatter({ samples, onPlay }: Props) {
       {samples.map((s, i) => {
         const cx = fx(Math.min(X_MAX, Math.max(X_MIN, s.centroid)));
         const cy = fy(Math.min(Y_MAX, Math.max(Y_MIN, s.f0)));
+        const active = i === hoverIdx;
         return (
           <Glyph
             key={s.at}
             sound={s.sound}
             x={cx}
             y={cy}
-            size={i === hoverIdx ? 16 : 12}
-            highlight={i === hoverIdx}
+            size={active ? 16 : 12}
+            highlight={active}
           />
         );
       })}
