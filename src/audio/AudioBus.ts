@@ -83,6 +83,17 @@ export class AudioBus {
     this.emit({ type: 'note', note });
   }
 
+  /**
+   * Wipe the rolling note buffer. AudioInput calls this at the start
+   * of every new session so a fresh AudioContext doesn't inherit
+   * notes from the previous one — their timestamps belong to the
+   * old context's clock and would otherwise plot at random positions
+   * in the new cycle.
+   */
+  clearRecentNotes(): void {
+    this.recentNotes.length = 0;
+  }
+
   pushRawCapture(capture: RawCapture): void {
     for (const l of this.rawListeners) l(capture);
   }

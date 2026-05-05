@@ -85,6 +85,12 @@ export class AudioInput {
   async start(): Promise<void> {
     if (this.isRunning) return;
 
+    // The AudioBus is a module-level singleton; its recentNotes buffer
+    // would otherwise carry over notes whose timestamps belong to the
+    // *previous* AudioContext's clock and plot at random angles inside
+    // the new cycle.
+    audioBus.clearRecentNotes();
+
     // Browsers only expose navigator.mediaDevices on secure origins
     // (HTTPS or localhost). On HTTP / LAN IP, the property itself is
     // undefined — calling getUserMedia on it would throw a useless
@@ -172,6 +178,7 @@ export class AudioInput {
    */
   async startKeyboardMode(): Promise<void> {
     if (this.isRunning) return;
+    audioBus.clearRecentNotes();
     this.context = new AudioContext({ latencyHint: 'interactive' });
     if (this.context.state === 'suspended') await this.context.resume();
     document.addEventListener('visibilitychange', this.onVisibility);
