@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@sentry/react':
+      '@sentry/browser':
         specifier: ^10.51.0
-        version: 10.51.0(react@19.2.5)
+        version: 10.51.0
       '@supabase/supabase-js':
         specifier: ^2.105.3
         version: 2.105.3
@@ -1088,12 +1088,6 @@ packages:
   '@sentry/core@10.51.0':
     resolution: {integrity: sha512-Y45V/YXvVLEXmOdkbD1oG1gkRWFi9guCEGg3PlIlIpRjAbZUrvLGgjRJIc1E7XpSzmOnWbs5BbUxMv4PDaPj2w==}
     engines: {node: '>=18'}
-
-  '@sentry/react@10.51.0':
-    resolution: {integrity: sha512-RRHHqjNvjji6ebIqdlAr453AkST8Vm4cxdu1vWm772IgbzTO7Jx46Cj6Bt2/GjMyH0YLE5euDaAOQhFMmpvAOw==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      react: ^16.14.0 || 17.x || 18.x || 19.x
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -4152,12 +4146,6 @@ snapshots:
       '@sentry/core': 10.51.0
 
   '@sentry/core@10.51.0': {}
-
-  '@sentry/react@10.51.0(react@19.2.5)':
-    dependencies:
-      '@sentry/browser': 10.51.0
-      '@sentry/core': 10.51.0
-      react: 19.2.5
 
   '@standard-schema/spec@1.1.0': {}
 

@@ -1,22 +1,22 @@
-import * as Sentry from '@sentry/react';
-
 /**
- * Sentry init helper. No-op if VITE_SENTRY_DSN is empty so dev builds
- * don't accidentally ship errors to a production project. Called once
- * from main.tsx before the app renders.
+ * Sentry init helper. Dynamically imports `@sentry/browser` only when
+ * VITE_SENTRY_DSN is set so a build without the DSN ships zero Sentry
+ * bytes. Called from main.tsx at app boot; the dynamic chunk loads in
+ * parallel with the rest of the app and the first errors after boot
+ * still get captured because Sentry's queue holds events until init.
  */
-export function initSentry(): void {
+export async function initSentry(): Promise<void> {
   const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
   if (!dsn) return;
+  const Sentry = await import('@sentry/browser');
   Sentry.init({
     dsn,
     environment: import.meta.env.MODE,
-    // Modest sample rate; bump if you actually need traces.
+    // Modest sample rate; bump later if you actually need traces.
     tracesSampleRate: 0.1,
-    // No session replay by default — too heavy for an audio app.
+    // No session replay by default — too heavy for an audio app and
+    // the privacy implications need a separate decision.
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 0,
   });
 }
-
-export const SentryErrorBoundary = Sentry.ErrorBoundary;

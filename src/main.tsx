@@ -8,7 +8,7 @@ import { RealRhythmProvider } from './settings/real-rhythm';
 import { AuthProvider } from './cloud/auth';
 import { initSentry } from './cloud/sentry';
 
-initSentry();
+void initSentry();
 
 // Warm the calibration cache before the first mic-start so the classifier
 // sees personal profiles on the very first hit rather than after a race.
