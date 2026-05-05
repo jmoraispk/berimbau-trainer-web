@@ -22,6 +22,9 @@ export interface CloudProfile {
   id: string;
   display_name: string | null;
   anonymous: boolean;
+  tier: 'free' | 'early_access';
+  subscription_status: string | null;
+  current_period_end: string | null;
 }
 
 interface AuthCtx {
@@ -95,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, display_name, anonymous')
+      .select('id, display_name, anonymous, tier, subscription_status, current_period_end')
       .eq('id', user.id)
       .maybeSingle();
     if (error) {

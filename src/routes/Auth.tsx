@@ -73,6 +73,22 @@ export function Auth() {
         </Link>
       </header>
 
+      {/* OAuth comes first — it's the path most people take. The
+          email/password form sits below as the explicit alternative. */}
+      <button
+        type="button"
+        onClick={() => void signInWithGoogle()}
+        className="btn-primary w-full"
+      >
+        {t('auth.google')}
+      </button>
+
+      <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider text-text-dim font-mono">
+        <div className="flex-1 h-px bg-border" />
+        {t('auth.or')}
+        <div className="flex-1 h-px bg-border" />
+      </div>
+
       <div className="flex gap-2 text-xs">
         <ModeButton current={mode} target="signin" onClick={setMode} label={t('auth.mode_signin')} />
         <ModeButton current={mode} target="signup" onClick={setMode} label={t('auth.mode_signup')} />
@@ -101,25 +117,11 @@ export function Auth() {
         <button
           type="submit"
           disabled={busy || loading}
-          className="btn-primary disabled:opacity-50"
+          className="btn-ghost disabled:opacity-50"
         >
           {busy ? '…' : mode === 'signin' ? t('auth.mode_signin') : t('auth.mode_signup')}
         </button>
       </form>
-
-      <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider text-text-dim font-mono">
-        <div className="flex-1 h-px bg-border" />
-        {t('auth.or')}
-        <div className="flex-1 h-px bg-border" />
-      </div>
-
-      <button
-        type="button"
-        onClick={() => void signInWithGoogle()}
-        className="btn-ghost w-full"
-      >
-        {t('auth.google')}
-      </button>
 
       {msg && <p className="text-sm text-red-400">{msg}</p>}
       {info && <p className="text-sm text-text-dim">{info}</p>}

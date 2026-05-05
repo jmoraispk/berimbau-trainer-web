@@ -23,6 +23,7 @@ import { getMicDeviceId, setMicDeviceId } from '@/audio/mic-device';
 import { useAuth } from '@/cloud/auth';
 import { isCloudConfigured } from '@/cloud/supabase';
 import { deleteMyAccount, wipeMyData } from '@/cloud/account';
+import { openCustomerPortal } from '@/cloud/billing';
 
 /**
  * Local-data management. Everything in this app lives in the browser
@@ -258,14 +259,35 @@ export function Settings() {
               </Card>
               <Card>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">{t('settings.subscribe_title')}</span>
+                  <span className="text-sm font-medium">
+                    {profile?.tier === 'early_access'
+                      ? t('settings.subscribe_active_title')
+                      : t('settings.subscribe_title')}
+                  </span>
                   <span className="text-xs text-text-dim leading-relaxed max-w-md">
-                    {t('settings.subscribe_body')}
+                    {profile?.tier === 'early_access'
+                      ? t('settings.subscribe_active_body', {
+                          status: profile.subscription_status ?? 'active',
+                          period_end: profile.current_period_end
+                            ? new Date(profile.current_period_end).toLocaleDateString()
+                            : '—',
+                        })
+                      : t('settings.subscribe_body')}
                   </span>
                 </div>
-                <Link href="/subscribe" className="btn-ghost shrink-0">
-                  {t('settings.subscribe_cta')}
-                </Link>
+                {profile?.tier === 'early_access' ? (
+                  <button
+                    type="button"
+                    onClick={() => void openCustomerPortal()}
+                    className="btn-ghost shrink-0"
+                  >
+                    {t('settings.subscribe_manage')}
+                  </button>
+                ) : (
+                  <Link href="/subscribe" className="btn-ghost shrink-0">
+                    {t('settings.subscribe_cta')}
+                  </Link>
+                )}
               </Card>
               <button
                 type="button"
