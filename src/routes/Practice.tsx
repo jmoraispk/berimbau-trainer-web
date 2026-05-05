@@ -4,7 +4,6 @@ import { AudioInput } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
 import { Metronome } from '@/audio/Metronome';
 import { PlayAlong } from '@/audio/PlayAlong';
-import { PatternPreview } from '@/components/PatternPreview';
 import { SoundSymbol as SoundSymbolImported } from '@/components/SoundSymbol';
 import {
   GLOBAL_BPM_RANGE,
@@ -620,6 +619,20 @@ export function Practice() {
     }
   };
 
+  // Auto-start when the route mounts so the user lands directly in the
+  // session — no 'Ready?' click. The Home button that brought them here
+  // counts as the user gesture browsers require for getUserMedia and
+  // AudioContext; if mic permission isn't granted the start path falls
+  // back to keyboard mode itself, so the session still begins.
+  useEffect(() => {
+    if (toque.comingSoon) return;
+    if (status !== 'idle') return;
+    void handleStart();
+    // handleStart closes over status/refs that are guarded inside;
+    // running once on mount is sufficient.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <main className="relative h-full w-full">
       <canvas ref={canvasRef} className="block h-full w-full" />
@@ -724,42 +737,40 @@ export function Practice() {
         </Link>
       </div>
 
-      {(status === 'idle' || status === 'starting' || status === 'error') && (
+      {/* Toque marked coming-soon: no rhythm to play, show a stub. */}
+      {toque.comingSoon && (
         <div className="absolute inset-0 flex items-center justify-center bg-bg/70 backdrop-blur-sm px-4">
           <div className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-bg-elev border border-border max-w-sm w-full">
-            {toque.comingSoon ? (
-              <>
-                <h2 className="text-xl font-semibold">{toque.name}</h2>
-                <p className="text-text-dim text-sm text-center">
-                  {t('practice.coming_soon_body')}
-                </p>
-                <Link href="/" className="btn-primary">
-                  {t('practice.back_home')}
-                </Link>
-              </>
-            ) : (
-              <>
-                <h2 className="text-xl font-semibold">{t('practice.ready')}</h2>
-                <p className="text-text-dim text-sm text-center">
-                  {t('practice.playing_at', { toque: toque.name, bpm })}
-                </p>
-                <PatternPreview toque={toque} cellSize="compact" />
-                <div className="flex flex-col items-stretch gap-2 w-full">
-                  <button
-                    type="button"
-                    onClick={handleStart}
-                    disabled={status === 'starting'}
-                    className="px-6 py-2 rounded-full bg-accent text-bg font-semibold disabled:opacity-60"
-                  >
-                    {status === 'starting' ? t('practice.starting') : t('practice.start')}
-                  </button>
-                  <span className="text-[11px] text-text-dim text-center font-mono">
-                    {t('practice.keyboard_mode_hint')}
-                  </span>
-                </div>
-                {errorMsg && <p className="text-sm text-red-400 text-center">{errorMsg}</p>}
-              </>
-            )}
+            <h2 className="text-xl font-semibold">{toque.name}</h2>
+            <p className="text-text-dim text-sm text-center">
+              {t('practice.coming_soon_body')}
+            </p>
+            <Link href="/" className="btn-primary">
+              {t('practice.back_home')}
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Both mic and keyboard-mode start failed — give the user a way
+          to retry or back out. The session never reached 'running'. */}
+      {!toque.comingSoon && status === 'error' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-bg/70 backdrop-blur-sm px-4">
+          <div className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-bg-elev border border-border max-w-sm w-full">
+            <h2 className="text-xl font-semibold">{toque.name}</h2>
+            <p className="text-sm text-red-400 text-center">{errorMsg ?? ''}</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleStart}
+                className="btn-primary"
+              >
+                {t('common.try_again')}
+              </button>
+              <Link href="/" className="btn-ghost">
+                {t('practice.back_home')}
+              </Link>
+            </div>
           </div>
         </div>
       )}

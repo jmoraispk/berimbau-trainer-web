@@ -37,7 +37,7 @@ export const en = {
   'home.default_bpm': 'default {bpm} bpm',
   'home.start_practicing': 'Start practicing',
   'home.calibrate': 'Calibrate',
-  'home.recalibrate': 'Recalibrate',
+  'home.recalibrate': 'Calibrate',
   'home.calibration_subtitle': '{count} samples · saved {time}',
   'home.recent_sessions': 'Recent sessions',
   'home.streak': '{n}-day streak',
