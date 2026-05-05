@@ -18,13 +18,36 @@ interface Entry {
 
 const ENTRIES: Entry[] = [
   {
-    version: 'v0.0.1',
-    date: '2026-05-03',
+    version: 'v0.2',
+    date: '2026-05-04',
+    title: 'A bigger app',
+    highlights: [
+      'Take a class — the first guided class is live: chant a-e-i-o-u over São Bento Grande de Angola in three parts (forward, reverse, combined) with a repeat toggle and auto-advance.',
+      'Play-along mode in the practice toolbar plays the toque sounds on the beat so you have something to follow instead of practicing in silence.',
+      'Practice now auto-starts on tap. Single Start button, mic-to-keyboard fallback when permission is denied, no more "Ready?" intermediate screen.',
+      'Calibration scatter plot redone properly — numbered axes, the same TCH × / DONG ○ / DING ● glyphs as the rest of the app, hover tooltip with f0 and centroid, click anywhere to play the strike back, cross-highlight with the waveform thumbnails above.',
+      'New top-level destinations from the footer: Take a class · Leaderboard · Roadmap (vertical timeline with status pills) · Changelog · About.',
+      'Mic input picker in Settings — choose which microphone the app listens through.',
+      'Live mic level meter during calibration, with a "meter not moving?" troubleshooting popover.',
+      'Streak emojis on Home and Stats: 🔥 5 days · 💎 30 days · 👑 100 days.',
+      'Renamed to Berimbau Pro (was Berimbau Trainer), including the PWA install metadata. Fixed an iOS PWA bug where the homepage title rendered as a solid white block.',
+      'Calibrate-first warning: tapping Start Practicing without a saved profile pops a modal that routes you straight to the calibration flow.',
+      'Real-rhythm toggle in Settings (experimental) — shifts the visual pattern one slot so the silence between cycles falls at 3 o\'clock.',
+      'PWA install button in Settings, fixes a phantom-notes bug where strikes from previous sessions could appear in the practice circle.',
+    ],
+    link: {
+      href: 'https://github.com/jmoraispk/berimbau-trainer-web/releases/tag/v0.2',
+      label: 'v0.2 release notes on GitHub',
+    },
+  },
+  {
+    version: 'v0.1',
+    date: '2026-04-30',
     title: 'Initial public release',
     highlights: [
       'Five playable toques: São Bento Pequeno, Angola, São Bento Grande de Angola, Benguela, São Bento Grande (Regional).',
       'Practice mode with linear and circular visualisations, rolling 20-beat accuracy, and a last-30-beats outcome breakdown.',
-      'Three-stage guided calibration with live mic level meter, waveform thumbnails, click-to-play, single-strike refractory.',
+      'Three-stage guided calibration with waveform thumbnails, click-to-play, single-strike refractory.',
       'Strikes only count when they land in the cycle\'s PLAY phase, so stray sounds during the prep ramp are ignored.',
       'Pause / resume the calibration cycle to listen back without new captures racing in.',
       '185-song lyrics catalog from lalaue.com with style filter and optional YouTube embed.',
@@ -32,8 +55,8 @@ const ENTRIES: Entry[] = [
       'Bilingual EN ⇄ PT, JSON backup / import, PWA install, offline-capable.',
     ],
     link: {
-      href: 'https://github.com/jmoraispk/berimbau-trainer-web/releases/tag/v0.0.1',
-      label: 'v0.0.1 release notes on GitHub',
+      href: 'https://github.com/jmoraispk/berimbau-trainer-web/releases/tag/v0.1',
+      label: 'v0.1 release notes on GitHub',
     },
   },
   {
