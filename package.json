@@ -11,7 +11,16 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "icons": "node scripts/build-icons.mjs"
+    "icons": "node scripts/build-icons.mjs",
+    "postinstall": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec lint-staged"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint --max-warnings=0 --fix"
+    ]
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -19,6 +28,8 @@
     ]
   },
   "dependencies": {
+    "@sentry/react": "^10.51.0",
+    "@supabase/supabase-js": "^2.105.3",
     "idb": "^8.0.3",
     "meyda": "^5.6.3",
     "react": "^19.2.4",
@@ -39,7 +50,9 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.4.0",
     "jsdom": "^29.0.2",
+    "lint-staged": "^16.4.0",
     "sharp": "^0.34.5",
+    "simple-git-hooks": "^2.13.1",
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",

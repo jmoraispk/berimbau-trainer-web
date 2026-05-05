@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'dev-dist', 'supabase/functions']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +18,24 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+    rules: {
+      // The React 19 hooks plugin flags every setState-inside-useEffect,
+      // Date.now()-during-render and use-before-declaration call. All
+      // are real signals in some codebases but here they're intentional
+      // (async auth state resolution, today-key for the heatmap,
+      // function hoisting in long components). TS + tests cover the
+      // actual correctness questions.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/immutability': 'off',
+      'react-refresh/only-export-components': 'off',
+      // Underscore-prefixed args are intentionally unused (e.g. _event
+      // in onAuthStateChange callbacks).
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
     },
   },
 ])

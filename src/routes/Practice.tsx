@@ -21,6 +21,7 @@ import {
   type Outcome,
 } from '@/engine/scoring';
 import { saveSession } from '@/storage/sessions-store';
+import { pushSession } from '@/cloud/sync';
 import { useI18n, type TFn } from '@/i18n';
 import { useRealRhythm } from '@/settings/real-rhythm';
 
@@ -228,7 +229,7 @@ export function Practice() {
     const built = buildSummary(scoringRef.current, elapsedActive(now));
     if (built.totalScoredBeats === 0) return;
     sessionSavedRef.current = true;
-    void saveSession({
+    const record = {
       startedAt: sessionStartWallRef.current,
       endedAt: Date.now(),
       toqueName: toque.name,
@@ -239,7 +240,10 @@ export function Practice() {
       bestStreak: built.bestStreak,
       outcomeCounts: built.outcomeCounts,
       perSound: built.perSound,
-    });
+    };
+    void saveSession(record);
+    // Mirror to cloud when authed; pushSession no-ops otherwise.
+    void pushSession(record);
   }, [toque]);
 
   const endSession = useCallback(() => {

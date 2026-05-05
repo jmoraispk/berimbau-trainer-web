@@ -22,12 +22,15 @@ import {
   useI18n,
   type TFn,
 } from '@/i18n';
+import { useAuth } from '@/cloud/auth';
+import { isCloudConfigured } from '@/cloud/supabase';
 
 const SOUNDS: Sound[] = ['ch', 'dong', 'ding'];
 
 export function Home() {
   const [, navigate] = useLocation();
   const { t } = useI18n();
+  const { user } = useAuth();
   const [toqueName, setToqueName] = useState<ToqueName>('Angola');
   const toque = TOQUES[toqueName];
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
@@ -81,6 +84,14 @@ export function Home() {
     <main className="relative min-h-full flex flex-col items-center px-6 pt-12 pb-14 gap-8 max-w-3xl mx-auto">
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <LanguageToggle />
+        {isCloudConfigured && (
+          <Link
+            href={user ? '/profile' : '/auth'}
+            className="inline-flex items-center px-3 h-9 rounded-full bg-bg-elev/80 border border-border text-text-dim hover:text-text hover:border-border-strong transition text-[11px] font-mono uppercase tracking-wider"
+          >
+            {user ? t('home.profile_link') : t('home.sign_in_link')}
+          </Link>
+        )}
         <Link
           href="/settings"
           aria-label={t('home.settings_aria')}
@@ -255,6 +266,18 @@ export function Home() {
           className="text-text-dim underline underline-offset-4 hover:text-text"
         >
           {t('home.browse_about')}
+        </Link>
+        <Link
+          href="/privacy"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_privacy')}
+        </Link>
+        <Link
+          href="/terms"
+          className="text-text-dim underline underline-offset-4 hover:text-text"
+        >
+          {t('home.browse_terms')}
         </Link>
       </div>
 

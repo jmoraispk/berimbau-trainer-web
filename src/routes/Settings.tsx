@@ -20,6 +20,9 @@ import { formatRelativeTime, useI18n, type TFn } from '@/i18n';
 import { useRealRhythm } from '@/settings/real-rhythm';
 import { usePwaInstall } from '@/settings/use-pwa-install';
 import { getMicDeviceId, setMicDeviceId } from '@/audio/mic-device';
+import { useAuth } from '@/cloud/auth';
+import { isCloudConfigured } from '@/cloud/supabase';
+import { deleteMyAccount, wipeMyData } from '@/cloud/account';
 
 /**
  * Local-data management. Everything in this app lives in the browser
@@ -33,6 +36,9 @@ export function Settings() {
   const { t } = useI18n();
   const { realRhythm, setRealRhythm } = useRealRhythm();
   const install = usePwaInstall();
+  const { user, profile, updateProfile, signOut } = useAuth();
+  const [accountBusy, setAccountBusy] = useState<'wipe' | 'delete' | 'anon' | null>(null);
+  const [accountMsg, setAccountMsg] = useState<string | null>(null);
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [busy, setBusy] = useState<Busy>(null);
@@ -151,6 +157,142 @@ export function Settings() {
           {t('common.back')}
         </Link>
       </header>
+
+      {isCloudConfigured && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+            {t('settings.account')}
+          </h2>
+          {user ? (
+            <>
+              <Card>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">
+                    {profile?.display_name ?? user.email}
+                  </span>
+                  <span className="text-xs text-text-dim">
+                    {t('settings.signed_in_as', { email: user.email ?? '' })}
+                  </span>
+                </div>
+                <Link href="/profile" className="btn-ghost shrink-0">
+                  {t('settings.account_open')}
+                </Link>
+              </Card>
+              <Card>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">
+                    {t('settings.anonymous_toggle')}
+                  </span>
+                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                    {t('settings.anonymous_help')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={profile?.anonymous ?? false}
+                  disabled={accountBusy === 'anon'}
+                  onClick={async () => {
+                    setAccountBusy('anon');
+                    setAccountMsg(null);
+                    const err = await updateProfile({
+                      anonymous: !(profile?.anonymous ?? false),
+                    });
+                    if (err) setAccountMsg(err);
+                    setAccountBusy(null);
+                  }}
+                  className={`shrink-0 inline-flex items-center px-4 py-1.5 rounded-full border text-sm transition disabled:opacity-50 ${
+                    profile?.anonymous
+                      ? 'bg-accent text-bg border-accent'
+                      : 'bg-bg-elev text-text-dim border-border hover:border-border-strong'
+                  }`}
+                >
+                  {profile?.anonymous ? t('settings.anonymous_on') : t('settings.anonymous_off')}
+                </button>
+              </Card>
+              <Card>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{t('settings.wipe_cloud_title')}</span>
+                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                    {t('settings.wipe_cloud_body')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={accountBusy === 'wipe'}
+                  onClick={async () => {
+                    if (!confirm(t('settings.wipe_cloud_confirm'))) return;
+                    setAccountBusy('wipe');
+                    setAccountMsg(null);
+                    const err = await wipeMyData();
+                    setAccountMsg(err ?? t('settings.wipe_cloud_done'));
+                    setAccountBusy(null);
+                  }}
+                  className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400/60 hover:text-red-400 transition disabled:opacity-50"
+                >
+                  {t('settings.clear')}
+                </button>
+              </Card>
+              <Card>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{t('settings.delete_account_title')}</span>
+                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                    {t('settings.delete_account_body')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={accountBusy === 'delete'}
+                  onClick={async () => {
+                    if (!confirm(t('settings.delete_account_confirm'))) return;
+                    setAccountBusy('delete');
+                    setAccountMsg(null);
+                    const err = await deleteMyAccount();
+                    setAccountMsg(err ?? t('settings.delete_account_done'));
+                    setAccountBusy(null);
+                  }}
+                  className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-red-400/40 text-sm text-red-400 hover:border-red-400 transition disabled:opacity-50"
+                >
+                  {t('settings.delete_account_cta')}
+                </button>
+              </Card>
+              <Card>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{t('settings.subscribe_title')}</span>
+                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                    {t('settings.subscribe_body')}
+                  </span>
+                </div>
+                <Link href="/subscribe" className="btn-ghost shrink-0">
+                  {t('settings.subscribe_cta')}
+                </Link>
+              </Card>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="self-start text-xs text-text-dim underline mt-1"
+              >
+                {t('profile.sign_out')}
+              </button>
+              {accountMsg && (
+                <p className="text-xs text-text-dim font-mono">{accountMsg}</p>
+              )}
+            </>
+          ) : (
+            <Card>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">{t('settings.account_signed_out')}</span>
+                <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                  {t('settings.account_signed_out_body')}
+                </span>
+              </div>
+              <Link href="/auth" className="btn-primary shrink-0">
+                {t('settings.account_sign_in')}
+              </Link>
+            </Card>
+          )}
+        </section>
+      )}
 
       {install.status !== 'already-installed' && (
         <section className="flex flex-col gap-2">

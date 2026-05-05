@@ -28,13 +28,47 @@ re-renders per audio frame. See [src/audio/AudioBus.ts](src/audio/AudioBus.ts).
 ## Scripts
 
 ```bash
-pnpm install       # install deps
+pnpm install       # install deps + sets up pre-commit hooks
 pnpm dev           # dev server with HMR
 pnpm test          # vitest
 pnpm build         # typecheck + production build
+pnpm lint          # eslint full repo (CI runs eslint on changed files for PRs)
 pnpm preview       # serve the built bundle
 pnpm icons         # rasterize public/icon.svg → PNG manifest icons
 ```
+
+A `pre-commit` hook runs `lint-staged` over staged `.ts`/`.tsx` files
+(eslint --fix). CI runs `tsc -b` + `vitest` + `vite build` on every
+push and PR.
+
+## Environment variables
+
+Copy `.env.example` → `.env` and fill in the values you want. The app
+runs offline-only without any of them; cloud features light up once
+the corresponding pair is set.
+
+| Var | Required for | Where it comes from |
+|---|---|---|
+| `VITE_SUPABASE_URL` | Auth + leaderboard + sync + delete account | Supabase → Project Settings → API |
+| `VITE_SUPABASE_ANON_KEY` | (same) | Supabase → Project Settings → API |
+| `VITE_SENTRY_DSN` | Browser error reporting | Sentry → project → SDK setup |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | Subscriptions | Stripe → Developers → API keys |
+
+The Supabase **anon** key is safe to ship in the browser — RLS
+policies are what protect data. The Supabase **service** key (which
+isn't here) must never reach the browser; it's only used by Edge
+Functions and migrations from the Supabase CLI.
+
+### One-time backend setup
+
+1. Create a Supabase project (free tier, pick São Paulo or US-East).
+2. Open the SQL editor and run the file in
+   `supabase/migrations/20260505000000_initial.sql`. That creates
+   `profiles`, `sessions`, the `leaderboard_view`, RLS policies and
+   the `delete_my_account` RPC.
+3. Auth → Providers: enable email + Google (Google needs OAuth client
+   id/secret from Google Cloud Console).
+4. Copy the project URL + anon key into `.env`.
 
 ## Layout
 

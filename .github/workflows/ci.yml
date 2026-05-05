@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Need history for the changed-files lint diff on PRs. depth=0 is
+          # heavy on large repos; this one is small enough that it doesn't
+          # matter.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -31,6 +36,31 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Lint only the .ts/.tsx files that changed against the PR base. On
+      # pushes to main (rebase merges drop the change-base) we fall through
+      # to the 'lint all' step.
+      - name: Lint (changed files, PRs)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -e
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          BASE="origin/${{ github.base_ref }}"
+          mapfile -t CHANGED < <(git diff --name-only --diff-filter=ACMR "$BASE...HEAD" -- 'src/**/*.ts' 'src/**/*.tsx')
+          if [ "${#CHANGED[@]}" -eq 0 ]; then
+            echo "No TS/TSX files changed."
+            exit 0
+          fi
+          printf '%s\n' "${CHANGED[@]}"
+          pnpm exec eslint --max-warnings=0 "${CHANGED[@]}"
+
+      - name: Lint (full repo, push to main)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm exec tsc -b
 
       - name: Vitest
         run: pnpm test
