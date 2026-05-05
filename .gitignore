@@ -20,6 +20,10 @@ dev-dist
 .env.local
 .env.*.local
 
+# Supabase CLI temp / local-dev artefacts.
+supabase/.temp/
+supabase/.branches/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
