@@ -137,18 +137,25 @@ export function Roadmap() {
           className="absolute left-[10px] top-2 bottom-2 w-px bg-gradient-to-b from-border-strong via-border to-border/30"
         />
         {SECTIONS.map((section, si) => (
-          <li key={si} className="relative flex flex-col gap-3">
-            <span
-              aria-hidden
-              className="absolute -left-[20px] top-[2px] w-3.5 h-3.5 rounded-full ring-4 ring-bg"
-              style={{ background: section.accent }}
-            />
-            <h2
-              className="text-[11px] font-semibold tracking-[0.18em] uppercase"
-              style={{ color: section.accent }}
-            >
-              {section.heading}
-            </h2>
+          <li key={si} className="flex flex-col gap-3">
+            {/* Heading row owns the dot so flex-items-center handles
+             *  vertical alignment automatically. -left positions the
+             *  dot's center onto the track at x≈10 (track lives at
+             *  left-[10px] of the <ol>; this row starts at the ol's
+             *  pl-7 = 28 px content edge). */}
+            <div className="relative flex items-center">
+              <span
+                aria-hidden
+                className="absolute -left-[24px] top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ring-4 ring-bg"
+                style={{ background: section.accent }}
+              />
+              <h2
+                className="text-[11px] font-semibold tracking-[0.18em] uppercase leading-none"
+                style={{ color: section.accent }}
+              >
+                {section.heading}
+              </h2>
+            </div>
             <ul className="flex flex-col gap-2">
               {section.items.map((item, i) => (
                 <li

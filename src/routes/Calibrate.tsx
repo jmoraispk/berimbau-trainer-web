@@ -330,14 +330,14 @@ function RecordingPanel({
 }) {
   return (
     <div className="w-full grid md:grid-cols-[auto_1fr] gap-6 items-start">
-      <div className="flex flex-col items-center md:items-start gap-2">
+      <div className="flex flex-col items-center gap-2">
         <CycleRing sound={activeSound} paused={paused} phaseRef={phaseRef} t={t} />
         <button
           type="button"
           onClick={onTogglePause}
           className="btn-ghost px-4 py-1 text-xs"
         >
-          {paused ? t('calibrate.resume_cycle') : t('calibrate.pause_cycle')}
+          {paused ? t('practice.resume') : t('practice.pause')}
         </button>
       </div>
       <div className="flex flex-col gap-3 min-w-0">
