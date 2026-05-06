@@ -33,7 +33,7 @@ export const pt: Messages = {
   'difficulty.very_advanced': 'Pro (em breve)',
 
   // ── home ────────────────────────────────────────────────────────────
-  'home.tagline': 'Escolha um toque, ajuste o andamento e toque junto pelo microfone.',
+  'home.tagline': 'Escolha um toque, ajuste o ritmo, toque no microfone.',
   'home.toque': 'Toque',
   'home.default_bpm': 'padrão {bpm} bpm',
   'home.start_practicing': 'Começar a praticar',
@@ -86,7 +86,7 @@ export const pt: Messages = {
   'auth.email': 'E-mail',
   'auth.password': 'Senha',
   'auth.mode_signin': 'Entrar',
-  'auth.mode_signup': 'Registrar',
+  'auth.mode_signup': 'Criar conta',
   'auth.or': 'ou',
   'auth.google': 'Entrar com Google',
   'auth.signup_check_email': 'Verifique seu e-mail para confirmar.',
@@ -139,7 +139,7 @@ export const pt: Messages = {
   'subscribe.perk_priority': 'Canal prioritário de feedback por e-mail',
   'subscribe.your_plan': 'Seu plano',
   'subscribe.included': 'Incluído no grátis',
-  'subscribe.sign_up_free': 'Registrar — grátis',
+  'subscribe.sign_up_free': 'Criar conta grátis',
   'subscribe.sign_in_to_subscribe': 'Entre para assinar',
   'subscribe.choose_plan': 'Assinar',
   'subscribe.already_subscribed': 'Você já é assinante',
