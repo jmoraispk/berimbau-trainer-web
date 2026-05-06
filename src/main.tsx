@@ -7,6 +7,7 @@ import { I18nProvider } from './i18n';
 import { RealRhythmProvider } from './settings/real-rhythm';
 import { AuthProvider } from './cloud/auth';
 import { initSentry } from './cloud/sentry';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 void initSentry();
 
@@ -23,5 +24,9 @@ createRoot(document.getElementById('root')!).render(
         </RealRhythmProvider>
       </AuthProvider>
     </I18nProvider>
+    {/* No-op outside of Vercel deploys; ~5 KB gzipped, async-loaded
+        after first paint. Reports Core Web Vitals to the Speed
+        Insights dashboard. */}
+    <SpeedInsights />
   </StrictMode>,
 );

@@ -21,7 +21,11 @@ export interface PricingPlan {
   badgeKey?: string;
 }
 
-export const PLANS: PricingPlan[] = [
+export interface PricingPlanExt extends PricingPlan {
+  recommended?: boolean;
+}
+
+export const PLANS: PricingPlanExt[] = [
   {
     id: 'monthly',
     priceEnv: import.meta.env.VITE_STRIPE_PRICE_MONTHLY as string | undefined,
@@ -31,9 +35,10 @@ export const PLANS: PricingPlan[] = [
   {
     id: 'annual',
     priceEnv: import.meta.env.VITE_STRIPE_PRICE_ANNUAL as string | undefined,
-    amountUsd: 49,
+    amountUsd: 48,
     intervalKey: 'subscribe.year',
     badgeKey: 'subscribe.save_badge',
+    recommended: true,
   },
 ];
 

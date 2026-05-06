@@ -103,6 +103,8 @@ export function Subscribe() {
               priceSuffix={intervalLabel}
               priceSub={subPrice}
               badge={plan.badgeKey ? t(plan.badgeKey as MessageKey) : undefined}
+              recommended={plan.recommended}
+              recommendedLabel={plan.recommended ? t('subscribe.recommended') : undefined}
               tagline={t('subscribe.tier_paid_tagline')}
               perks={[
                 t('subscribe.perk_everything_free'),
@@ -155,6 +157,8 @@ function PricingCard({
   priceSuffix,
   priceSub,
   badge,
+  recommended,
+  recommendedLabel,
   tagline,
   perks,
   cta,
@@ -164,14 +168,25 @@ function PricingCard({
   priceSuffix?: string;
   priceSub?: string | null;
   badge?: string;
+  recommended?: boolean;
+  recommendedLabel?: string;
   tagline: string;
   perks: string[];
   cta: React.ReactNode;
 }) {
   return (
-    <div className="card flex flex-col gap-4 p-5 relative">
+    <div
+      className={`card flex flex-col gap-4 p-5 relative ${
+        recommended ? 'border-accent shadow-[0_4px_24px_-8px_rgba(255,138,61,0.45)]' : ''
+      }`}
+    >
+      {recommended && recommendedLabel && (
+        <span className="absolute -top-2 left-4 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent text-bg">
+          ✓ {recommendedLabel}
+        </span>
+      )}
       {badge && (
-        <span className="absolute -top-2 right-4 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent text-bg">
+        <span className="absolute -top-2 right-4 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-bg-elev text-accent border border-accent">
           {badge}
         </span>
       )}

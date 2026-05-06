@@ -91,6 +91,16 @@ const SECTIONS: Section[] = [
         status: 'idea',
         body: 'Pandeiro, atabaque, agogô, reco-reco. Berimbaus are rare; the bateria as a whole isn\'t. Eventual goal: train any role.',
       },
+      {
+        title: 'Latency calibration',
+        status: 'idea',
+        body: 'A short clap-along to the metronome would let us measure the average detection-vs-expected offset and shift every later onset back by that amount, removing the user\'s system-specific lag from scoring.',
+      },
+      {
+        title: 'Scatter clustering / regions',
+        status: 'idea',
+        body: 'Overlay the calibration scatter with per-class convex hulls or k-means cluster ellipses, so off-cluster strikes are visually obvious instead of relying on the eye.',
+      },
     ],
   },
 ];
