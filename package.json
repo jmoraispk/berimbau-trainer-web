@@ -16,7 +16,9 @@
     "db:link": "supabase link --project-ref sihglhycaqwgjxiyaati",
     "db:push": "supabase db push",
     "db:diff": "supabase db diff",
-    "db:reset": "supabase db reset --linked"
+    "db:reset": "supabase db reset --linked",
+    "deploy:env": "vercel env ls",
+    "deploy:prod": "vercel deploy --prod"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm exec lint-staged"
@@ -63,6 +65,7 @@
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
+    "vercel": "^53.1.1",
     "vite": "^8.0.4",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.4"

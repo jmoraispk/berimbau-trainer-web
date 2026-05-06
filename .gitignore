@@ -24,6 +24,9 @@ dev-dist
 supabase/.temp/
 supabase/.branches/
 
+# Vercel CLI link state (project + org IDs).
+.vercel/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
