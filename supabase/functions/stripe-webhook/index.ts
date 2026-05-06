@@ -101,9 +101,13 @@ Deno.serve(async (req) => {
       break;
     }
     case 'customer.subscription.updated':
-    case 'customer.subscription.created': {
+    case 'customer.subscription.created':
+    case 'customer.subscription.paused':
+    case 'customer.subscription.resumed': {
       const sub = event.data.object as Stripe.Subscription;
       const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
+      // 'active' and 'trialing' get the perks. 'paused' (Stripe's
+      // pause-collection feature) and any other state demotes to free.
       const active = sub.status === 'active' || sub.status === 'trialing';
       await setTierByCustomer(customerId, {
         tier: active ? 'early_access' : 'free',
@@ -125,7 +129,7 @@ Deno.serve(async (req) => {
       break;
     }
     default:
-      // Other events ignored (invoice.* etc.).
+      // Other events (invoice.*, payment_intent.*, etc.) ignored.
       break;
   }
 
