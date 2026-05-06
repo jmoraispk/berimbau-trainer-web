@@ -5,14 +5,25 @@ import { useI18n } from '@/i18n';
  * Changelog — what shipped, plus a pointer back to v1 (Python+Kivy)
  * for context. Authored as a static structure so each release just
  * adds an entry at the top.
+ *
+ * Each highlight is an emoji-tagged headline with an optional list of
+ * sub-bullets for the supporting detail. Emojis are chosen so they
+ * don't repeat across the page — that way a quick scan reads as a
+ * different shape per release, not a wall of identical glyphs.
  */
+
+interface Highlight {
+  emoji?: string;
+  title: string;
+  details?: string[];
+}
 
 interface Entry {
   version: string;
   date: string;
   title: string;
   body?: string;
-  highlights?: string[];
+  highlights?: Highlight[];
   link?: { href: string; label: string };
 }
 
@@ -22,16 +33,91 @@ const ENTRIES: Entry[] = [
     date: '2026-05-06',
     title: 'Accounts, payments, and a tidier home',
     highlights: [
-      'User accounts — sign up with email + password or Google. Profile and practice history sync to the cloud so you can pick up on another device. Local-first stays the default; the app is fully usable signed-out.',
-      'Plans page at /subscribe — Free, $5 / month, $48 / year. The annual plan is marked Recommended with a "save 20%" pill, and every paid plan includes a 7-day free trial — no card is charged for the first week. FAQ accordion below the cards covers cancellation, refunds, and what Early Access unlocks.',
-      'Cancel any time from Settings → Manage (Stripe Customer Portal). Once canceled, Settings reads "Early Access — canceling, ends [date]" so you can see exactly when access ends — no more silent stale state.',
-      'Leaderboard plumbing — opt-in via the new Anonymous toggle in Settings. Streak glyphs visible on Home: 🔥 5 days · 💎 30 days · 👑 100 days.',
-      'Settings reorganized into collapsible menus: Account, Audio & microphone, Leaderboard, Data, Install. The "Display / Real rhythm" toggle is gone — the visual shift is now always on.',
-      'Calibration — cycle length is now configurable (1–10 s) with a − / + stepper that auto-pauses while you dial it in. A live countdown sits beside the pause button. The post-strike "rewind" animation is gone — the ring snaps to empty and the next prep ramp starts immediately. Off-beat strikes flash red on the ring instead of being dropped silently.',
-      'Sign-in screen polish — Google "G" branding on the OAuth button; "Register" / "Criar conta" replaces "Sign up". Magic-link mode dropped.',
-      'Mobile — extra top-room on Home so the language / sign-in / settings cluster stops crowding the logo on narrow phones.',
-      'Errors and performance — Sentry hooked up (lazy-loaded, zero bytes without the DSN). Vercel Speed Insights reports Core Web Vitals.',
-      'Bug fixes — favicon precache list corrected so installed PWAs no longer fall back to the default icon. Edge-function CORS allowlist now permits Supabase JS\'s apikey + x-client-info headers, fixing the "Failed to send a request to the Edge Function" error on Subscribe.',
+      {
+        emoji: '👤',
+        title: 'User accounts',
+        details: [
+          'Sign up with email + password or Google.',
+          'Profile and practice history sync across devices.',
+          'Local-first stays the default — the app is fully usable signed-out.',
+        ],
+      },
+      {
+        emoji: '💳',
+        title: 'Plans page at /subscribe — Free, $5 / month, $48 / year',
+        details: [
+          'Annual is marked Recommended with a "save 20%" pill.',
+          '7-day free trial on every paid plan — no card charged for the first week.',
+          'FAQ accordion covers cancellation, refunds, and what Early Access unlocks.',
+        ],
+      },
+      {
+        emoji: '🚪',
+        title: 'Cancel any time from Settings → Manage',
+        details: [
+          'Stripe Customer Portal handles the cancel + invoice flow.',
+          'Once canceled, Settings reads "Early Access — canceling, ends [date]" so the state is visible.',
+        ],
+      },
+      {
+        emoji: '🏆',
+        title: 'Leaderboard plumbing',
+        details: [
+          'Opt-in via the new "Anonymous on leaderboard" toggle in Settings.',
+          'Scores still count when anonymous; only the display name is hidden.',
+        ],
+      },
+      {
+        emoji: '⚙️',
+        title: 'Settings reorganized into collapsible menus',
+        details: [
+          'Sections: Account · Audio & microphone · Leaderboard · Data · Install.',
+          'Microphone picker, calibration profile and history/backup are grouped instead of scattered.',
+          'The "Display / Real rhythm" toggle is gone — the visual shift is now always on.',
+        ],
+      },
+      {
+        emoji: '🎚️',
+        title: 'Calibration cycle controls',
+        details: [
+          'Cycle length configurable 1–10 s via a − / + stepper, auto-pauses while you dial it in.',
+          'Live countdown beside the pause button.',
+          'Post-strike "rewind" animation is gone — the ring snaps to empty and the next prep starts immediately.',
+          'Off-beat strikes flash red on the ring instead of being dropped silently.',
+        ],
+      },
+      {
+        emoji: '✨',
+        title: 'Sign-in screen polish',
+        details: [
+          'Google "G" branding on the OAuth button.',
+          '"Register" / "Criar conta" replaces "Sign up".',
+          'Magic-link mode dropped — Sign in / Register / Google only.',
+        ],
+      },
+      {
+        emoji: '📱',
+        title: 'Mobile — more breathing room on Home',
+        details: [
+          'Extra top padding so the language / sign-in / settings cluster stops crowding the logo on phones.',
+        ],
+      },
+      {
+        emoji: '📡',
+        title: 'Errors and performance',
+        details: [
+          'Sentry hooked up — lazy-loaded, 0 KB without the DSN.',
+          'Vercel Speed Insights reports Core Web Vitals.',
+        ],
+      },
+      {
+        emoji: '🩹',
+        title: 'Bug fixes',
+        details: [
+          'Favicon precache list corrected — installed PWAs no longer fall back to the default icon.',
+          'Edge-function CORS allowlist now permits apikey + x-client-info headers, fixing "Failed to send a request to the Edge Function" on Subscribe.',
+        ],
+      },
     ],
     link: {
       href: 'https://github.com/jmoraispk/berimbau-trainer-web/releases/tag/v0.3',
@@ -43,18 +129,98 @@ const ENTRIES: Entry[] = [
     date: '2026-05-04',
     title: 'A bigger app',
     highlights: [
-      'Take a class — the first guided class is live: chant a-e-i-o-u over São Bento Grande de Angola in three parts (forward, reverse, combined) with a repeat toggle and auto-advance.',
-      'Play-along mode in the practice toolbar plays the toque sounds on the beat so you have something to follow instead of practicing in silence.',
-      'Practice now auto-starts on tap. Single Start button, mic-to-keyboard fallback when permission is denied, no more "Ready?" intermediate screen.',
-      'Calibration scatter plot redone properly — numbered axes, the same TCH × / DONG ○ / DING ● glyphs as the rest of the app, hover tooltip with f0 and centroid, click anywhere to play the strike back, cross-highlight with the waveform thumbnails above.',
-      'New top-level destinations from the footer: Take a class · Leaderboard · Roadmap (vertical timeline with status pills) · Changelog · About.',
-      'Mic input picker in Settings — choose which microphone the app listens through.',
-      'Live mic level meter during calibration, with a "meter not moving?" troubleshooting popover.',
-      'Streak emojis on Home and Stats: 🔥 5 days · 💎 30 days · 👑 100 days.',
-      'Renamed to Berimbau Pro (was Berimbau Trainer), including the PWA install metadata. Fixed an iOS PWA bug where the homepage title rendered as a solid white block.',
-      'Calibrate-first warning: tapping Start Practicing without a saved profile pops a modal that routes you straight to the calibration flow.',
-      'Real-rhythm toggle in Settings (experimental) — shifts the visual pattern one slot so the silence between cycles falls at 3 o\'clock.',
-      'PWA install button in Settings, fixes a phantom-notes bug where strikes from previous sessions could appear in the practice circle.',
+      {
+        emoji: '🎓',
+        title: 'Take a class — the first guided class is live',
+        details: [
+          'Chant a-e-i-o-u over São Bento Grande de Angola.',
+          'Three parts: forward, reverse, combined.',
+          'Repeat toggle and auto-advance between parts.',
+        ],
+      },
+      {
+        emoji: '🥁',
+        title: 'Play-along mode in the practice toolbar',
+        details: [
+          'Plays the toque sounds on the beat so you have something to follow instead of practicing in silence.',
+        ],
+      },
+      {
+        emoji: '▶️',
+        title: 'Practice auto-starts on tap',
+        details: [
+          'Single Start button, no more "Ready?" intermediate screen.',
+          'Mic-to-keyboard fallback when permission is denied.',
+        ],
+      },
+      {
+        emoji: '🌊',
+        title: 'Calibration scatter plot redone properly',
+        details: [
+          'Numbered axes.',
+          'Same TCH × / DONG ○ / DING ● glyphs as the rest of the app.',
+          'Hover tooltip with f0 and centroid.',
+          'Click anywhere to play the strike back.',
+          'Cross-highlight with the waveform thumbnails above.',
+        ],
+      },
+      {
+        emoji: '🧭',
+        title: 'New top-level destinations from the footer',
+        details: [
+          'Take a class · Leaderboard · Roadmap (vertical timeline with status pills) · Changelog · About.',
+        ],
+      },
+      {
+        emoji: '🎤',
+        title: 'Mic input picker in Settings',
+        details: [
+          'Choose which microphone the app listens through.',
+        ],
+      },
+      {
+        emoji: '📈',
+        title: 'Live mic level meter during calibration',
+        details: [
+          '"Meter not moving?" troubleshooting popover for the wrong-mic case.',
+        ],
+      },
+      {
+        emoji: '🔥',
+        title: 'Streak emojis on Home and Stats',
+        details: [
+          '🔥 5 days · 💎 30 days · 👑 100 days.',
+        ],
+      },
+      {
+        emoji: '🏷️',
+        title: 'Renamed to Berimbau Pro (was Berimbau Trainer)',
+        details: [
+          'PWA install metadata updated.',
+          'Fixed an iOS PWA bug where the homepage title rendered as a solid white block.',
+        ],
+      },
+      {
+        emoji: '⚠️',
+        title: 'Calibrate-first warning',
+        details: [
+          'Tapping Start Practicing without a saved profile pops a modal that routes you straight to the calibration flow.',
+        ],
+      },
+      {
+        emoji: '🔁',
+        title: 'Real-rhythm toggle in Settings (experimental)',
+        details: [
+          'Shifts the visual pattern one slot so the silence between cycles falls at 3 o\'clock.',
+        ],
+      },
+      {
+        emoji: '📲',
+        title: 'PWA install button in Settings',
+        details: [
+          'Fixed a phantom-notes bug where strikes from previous sessions could appear in the practice circle.',
+        ],
+      },
     ],
     link: {
       href: 'https://github.com/jmoraispk/berimbau-trainer-web/releases/tag/v0.2',
@@ -66,14 +232,64 @@ const ENTRIES: Entry[] = [
     date: '2026-04-30',
     title: 'Initial public release',
     highlights: [
-      'Five playable toques: São Bento Pequeno, Angola, São Bento Grande de Angola, Benguela, São Bento Grande (Regional).',
-      'Practice mode with linear and circular visualisations, rolling 20-beat accuracy, and a last-30-beats outcome breakdown.',
-      'Three-stage guided calibration with waveform thumbnails, click-to-play, single-strike refractory.',
-      'Strikes only count when they land in the cycle\'s PLAY phase, so stray sounds during the prep ramp are ignored.',
-      'Pause / resume the calibration cycle to listen back without new captures racing in.',
-      '185-song lyrics catalog from lalaue.com with style filter and optional YouTube embed.',
-      'Stats: lifetime counters, 26-week activity heatmap, per-toque aggregates, full session log.',
-      'Bilingual EN ⇄ PT, JSON backup / import, PWA install, offline-capable.',
+      {
+        emoji: '🪘',
+        title: 'Five playable toques',
+        details: [
+          'São Bento Pequeno · Angola · São Bento Grande de Angola · Benguela · São Bento Grande (Regional).',
+        ],
+      },
+      {
+        emoji: '🎯',
+        title: 'Practice mode',
+        details: [
+          'Linear and circular visualisations.',
+          'Rolling 20-beat accuracy.',
+          'Last-30-beats outcome breakdown.',
+        ],
+      },
+      {
+        emoji: '📐',
+        title: 'Three-stage guided calibration',
+        details: [
+          'Waveform thumbnails.',
+          'Click-to-play.',
+          'Single-strike refractory.',
+        ],
+      },
+      {
+        emoji: '⏱️',
+        title: 'Cycle-window strike acceptance',
+        details: [
+          'Strikes only count when they land in the cycle\'s PLAY phase, so stray sounds during the prep ramp are ignored.',
+          'Pause / resume the cycle to listen back without new captures racing in.',
+        ],
+      },
+      {
+        emoji: '📚',
+        title: '185-song lyrics catalog from lalaue.com',
+        details: [
+          'Style filter.',
+          'Optional YouTube embed.',
+        ],
+      },
+      {
+        emoji: '📊',
+        title: 'Stats dashboard',
+        details: [
+          'Lifetime counters.',
+          '26-week activity heatmap.',
+          'Per-toque aggregates and a full session log.',
+        ],
+      },
+      {
+        emoji: '🌐',
+        title: 'Bilingual EN ⇄ PT',
+      },
+      {
+        emoji: '💾',
+        title: 'JSON backup / import, PWA install, offline-capable',
+      },
     ],
     link: {
       href: 'https://github.com/jmoraispk/berimbau-trainer-web/releases/tag/v0.1',
@@ -108,7 +324,7 @@ export function Changelog() {
 
       <ol className="flex flex-col gap-3">
         {ENTRIES.map((entry) => (
-          <li key={entry.version} className="card flex flex-col gap-2 px-5 py-4">
+          <li key={entry.version} className="card flex flex-col gap-3 px-5 py-4">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-base font-semibold">
                 {entry.version}{' '}
@@ -122,9 +338,28 @@ export function Changelog() {
               <p className="text-sm text-text-dim leading-relaxed">{entry.body}</p>
             )}
             {entry.highlights && (
-              <ul className="text-sm text-text-dim leading-relaxed flex flex-col gap-1 list-disc list-outside pl-5">
+              <ul className="flex flex-col gap-2.5">
                 {entry.highlights.map((h, i) => (
-                  <li key={i}>{h}</li>
+                  <li key={i} className="flex flex-col gap-1">
+                    <div className="flex gap-2 items-baseline">
+                      {h.emoji && (
+                        <span className="shrink-0 text-base leading-none">{h.emoji}</span>
+                      )}
+                      <span className="text-sm text-text leading-snug">{h.title}</span>
+                    </div>
+                    {h.details && h.details.length > 0 && (
+                      <ul className="ml-7 flex flex-col gap-0.5 list-disc list-outside pl-4 marker:text-text-dim/50">
+                        {h.details.map((d, j) => (
+                          <li
+                            key={j}
+                            className="text-xs text-text-dim leading-relaxed"
+                          >
+                            {d}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
                 ))}
               </ul>
             )}
