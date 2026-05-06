@@ -18,6 +18,27 @@ interface Entry {
 
 const ENTRIES: Entry[] = [
   {
+    version: 'v0.3',
+    date: '2026-05-06',
+    title: 'Accounts, payments, and a tidier home',
+    highlights: [
+      'User accounts — sign up with email + password or Google. Profile and practice history sync to the cloud so you can pick up on another device. Local-first stays the default; the app is fully usable signed-out.',
+      'Plans page at /subscribe — Free, $5 / month, $48 / year. The annual plan is marked Recommended with a "save 20%" pill, and every paid plan includes a 7-day free trial — no card is charged for the first week. FAQ accordion below the cards covers cancellation, refunds, and what Early Access unlocks.',
+      'Cancel any time from Settings → Manage (Stripe Customer Portal). Once canceled, Settings reads "Early Access — canceling, ends [date]" so you can see exactly when access ends — no more silent stale state.',
+      'Leaderboard plumbing — opt-in via the new Anonymous toggle in Settings. Streak glyphs visible on Home: 🔥 5 days · 💎 30 days · 👑 100 days.',
+      'Settings reorganized into collapsible menus: Account, Audio & microphone, Leaderboard, Data, Install. The "Display / Real rhythm" toggle is gone — the visual shift is now always on.',
+      'Calibration — cycle length is now configurable (1–10 s) with a − / + stepper that auto-pauses while you dial it in. A live countdown sits beside the pause button. The post-strike "rewind" animation is gone — the ring snaps to empty and the next prep ramp starts immediately. Off-beat strikes flash red on the ring instead of being dropped silently.',
+      'Sign-in screen polish — Google "G" branding on the OAuth button; "Register" / "Criar conta" replaces "Sign up". Magic-link mode dropped.',
+      'Mobile — extra top-room on Home so the language / sign-in / settings cluster stops crowding the logo on narrow phones.',
+      'Errors and performance — Sentry hooked up (lazy-loaded, zero bytes without the DSN). Vercel Speed Insights reports Core Web Vitals.',
+      'Bug fixes — favicon precache list corrected so installed PWAs no longer fall back to the default icon. Edge-function CORS allowlist now permits Supabase JS\'s apikey + x-client-info headers, fixing the "Failed to send a request to the Edge Function" error on Subscribe.',
+    ],
+    link: {
+      href: 'https://github.com/jmoraispk/berimbau-trainer-web/releases/tag/v0.3',
+      label: 'v0.3 release notes on GitHub',
+    },
+  },
+  {
     version: 'v0.2',
     date: '2026-05-04',
     title: 'A bigger app',
