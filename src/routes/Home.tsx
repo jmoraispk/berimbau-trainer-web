@@ -81,7 +81,7 @@ export function Home() {
   };
 
   return (
-    <main className="relative min-h-full flex flex-col items-center px-6 pt-12 pb-14 gap-8 max-w-3xl mx-auto">
+    <main className="relative min-h-full flex flex-col items-center px-6 pt-20 sm:pt-12 pb-14 gap-8 max-w-3xl mx-auto">
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <LanguageToggle />
         {isCloudConfigured && (

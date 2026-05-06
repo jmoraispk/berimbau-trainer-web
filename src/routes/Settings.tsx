@@ -17,7 +17,6 @@ import {
   parseBackup,
 } from '@/storage/backup';
 import { formatRelativeTime, useI18n, type TFn } from '@/i18n';
-import { useRealRhythm } from '@/settings/real-rhythm';
 import { usePwaInstall } from '@/settings/use-pwa-install';
 import { getMicDeviceId, setMicDeviceId } from '@/audio/mic-device';
 import { useAuth } from '@/cloud/auth';
@@ -29,13 +28,16 @@ import { openCustomerPortal } from '@/cloud/billing';
  * Local-data management. Everything in this app lives in the browser
  * (calibration profiles + session history via IndexedDB), so the user
  * needs a way to inspect and wipe both.
+ *
+ * Layout: collapsible <details> groups, all closed by default. Cards
+ * slot inside the relevant group; group membership reflects intent
+ * (e.g. anonymous-on-leaderboard sits under Leaderboard, not Account).
  */
 
 type Busy = 'calibration' | 'sessions' | 'export' | 'import' | null;
 
 export function Settings() {
   const { t } = useI18n();
-  const { realRhythm, setRealRhythm } = useRealRhythm();
   const install = usePwaInstall();
   const { user, profile, updateProfile, signOut } = useAuth();
   const [accountBusy, setAccountBusy] = useState<'wipe' | 'delete' | 'anon' | null>(null);
@@ -146,10 +148,11 @@ export function Settings() {
     sessions.reduce((sum, s) => sum + s.elapsedSec, 0) / 60,
   );
   const totalBeats = sessions.reduce((sum, s) => sum + s.totalScoredBeats, 0);
+  const cloudUser = isCloudConfigured && user;
 
   return (
-    <main className="min-h-full px-6 py-8 max-w-2xl mx-auto flex flex-col gap-6">
-      <header className="flex items-start justify-between gap-4">
+    <main className="min-h-full px-6 py-8 max-w-2xl mx-auto flex flex-col gap-3">
+      <header className="flex items-start justify-between gap-4 mb-2">
         <div className="flex flex-col">
           <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
           <p className="text-text-dim text-sm">{t('settings.subtitle')}</p>
@@ -159,196 +162,115 @@ export function Settings() {
         </Link>
       </header>
 
-      {isCloudConfigured && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-            {t('settings.account')}
-          </h2>
-          {user ? (
-            <>
-              <Card>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">
-                    {profile?.display_name ?? user.email}
-                  </span>
-                  <span className="text-xs text-text-dim">
-                    {t('settings.signed_in_as', { email: user.email ?? '' })}
-                  </span>
-                </div>
-                <Link href="/profile" className="btn-ghost shrink-0">
-                  {t('settings.account_open')}
-                </Link>
-              </Card>
-              <Card>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">
-                    {t('settings.anonymous_toggle')}
-                  </span>
-                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
-                    {t('settings.anonymous_help')}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={profile?.anonymous ?? false}
-                  disabled={accountBusy === 'anon'}
-                  onClick={async () => {
-                    setAccountBusy('anon');
-                    setAccountMsg(null);
-                    const err = await updateProfile({
-                      anonymous: !(profile?.anonymous ?? false),
-                    });
-                    if (err) setAccountMsg(err);
-                    setAccountBusy(null);
-                  }}
-                  className={`shrink-0 inline-flex items-center px-4 py-1.5 rounded-full border text-sm transition disabled:opacity-50 ${
-                    profile?.anonymous
-                      ? 'bg-accent text-bg border-accent'
-                      : 'bg-bg-elev text-text-dim border-border hover:border-border-strong'
-                  }`}
-                >
-                  {profile?.anonymous ? t('settings.anonymous_on') : t('settings.anonymous_off')}
-                </button>
-              </Card>
-              <Card>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{t('settings.wipe_cloud_title')}</span>
-                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
-                    {t('settings.wipe_cloud_body')}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  disabled={accountBusy === 'wipe'}
-                  onClick={async () => {
-                    if (!confirm(t('settings.wipe_cloud_confirm'))) return;
-                    setAccountBusy('wipe');
-                    setAccountMsg(null);
-                    const err = await wipeMyData();
-                    setAccountMsg(err ?? t('settings.wipe_cloud_done'));
-                    setAccountBusy(null);
-                  }}
-                  className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400/60 hover:text-red-400 transition disabled:opacity-50"
-                >
-                  {t('settings.clear')}
-                </button>
-              </Card>
-              <Card>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{t('settings.delete_account_title')}</span>
-                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
-                    {t('settings.delete_account_body')}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  disabled={accountBusy === 'delete'}
-                  onClick={async () => {
-                    if (!confirm(t('settings.delete_account_confirm'))) return;
-                    setAccountBusy('delete');
-                    setAccountMsg(null);
-                    const err = await deleteMyAccount();
-                    setAccountMsg(err ?? t('settings.delete_account_done'));
-                    setAccountBusy(null);
-                  }}
-                  className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-red-400/40 text-sm text-red-400 hover:border-red-400 transition disabled:opacity-50"
-                >
-                  {t('settings.delete_account_cta')}
-                </button>
-              </Card>
-              <Card>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">
-                    {profile?.tier === 'early_access'
-                      ? t('settings.subscribe_active_title')
-                      : t('settings.subscribe_title')}
-                  </span>
-                  <span className="text-xs text-text-dim leading-relaxed max-w-md">
-                    {profile?.tier === 'early_access'
-                      ? t('settings.subscribe_active_body', {
-                          status: profile.subscription_status ?? 'active',
-                          period_end: profile.current_period_end
-                            ? new Date(profile.current_period_end).toLocaleDateString()
-                            : '—',
-                        })
-                      : t('settings.subscribe_body')}
-                  </span>
-                </div>
-                {profile?.tier === 'early_access' ? (
-                  <button
-                    type="button"
-                    onClick={() => void openCustomerPortal()}
-                    className="btn-ghost shrink-0"
-                  >
-                    {t('settings.subscribe_manage')}
-                  </button>
-                ) : (
-                  <Link href="/subscribe" className="btn-ghost shrink-0">
-                    {t('settings.subscribe_cta')}
-                  </Link>
-                )}
-              </Card>
-              <button
-                type="button"
-                onClick={() => void signOut()}
-                className="self-start text-xs text-text-dim underline mt-1"
-              >
-                {t('profile.sign_out')}
-              </button>
-              {accountMsg && (
-                <p className="text-xs text-text-dim font-mono">{accountMsg}</p>
-              )}
-            </>
-          ) : (
-            <Card>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">{t('settings.account_signed_out')}</span>
-                <span className="text-xs text-text-dim leading-relaxed max-w-md">
-                  {t('settings.account_signed_out_body')}
-                </span>
-              </div>
-              <Link href="/auth" className="btn-primary shrink-0">
-                {t('settings.account_sign_in')}
-              </Link>
-            </Card>
-          )}
-        </section>
+      {/* Sign-in CTA stays outside the collapsible groups — it's the
+       *  only actionable thing for a signed-out user, so hiding it
+       *  behind a click would be obnoxious. */}
+      {isCloudConfigured && !user && (
+        <Card>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">{t('settings.account_signed_out')}</span>
+            <span className="text-xs text-text-dim leading-relaxed max-w-md">
+              {t('settings.account_signed_out_body')}
+            </span>
+          </div>
+          <Link href="/auth" className="btn-primary shrink-0">
+            {t('settings.account_sign_in')}
+          </Link>
+        </Card>
       )}
 
-      {install.status !== 'already-installed' && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-            {t('settings.install_section')}
-          </h2>
+      {cloudUser && (
+        <Section title={t('settings.account')}>
           <Card>
             <div className="flex flex-col">
-              <span className="text-sm font-medium">{t('settings.install_title')}</span>
-              <span className="text-xs text-text-dim leading-relaxed max-w-md">
-                {install.status === 'can-prompt'
-                  ? t('settings.install_body_can_prompt')
-                  : install.status === 'ios-manual'
-                  ? t('settings.install_body_ios')
-                  : t('settings.install_body_unavailable')}
+              <span className="text-sm font-medium">
+                {profile?.display_name ?? user.email}
+              </span>
+              <span className="text-xs text-text-dim">
+                {t('settings.signed_in_as', { email: user.email ?? '' })}
               </span>
             </div>
-            {install.status === 'can-prompt' && (
+            <Link href="/profile" className="btn-ghost shrink-0">
+              {t('settings.account_open')}
+            </Link>
+          </Card>
+          <Card>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">
+                {profile?.tier === 'early_access'
+                  ? profile.cancel_at_period_end
+                    ? t('settings.subscribe_canceling_title')
+                    : t('settings.subscribe_active_title')
+                  : t('settings.subscribe_title')}
+              </span>
+              <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                {profile?.tier === 'early_access'
+                  ? profile.cancel_at_period_end
+                    ? t('settings.subscribe_canceling_body', {
+                        period_end: profile.current_period_end
+                          ? new Date(profile.current_period_end).toLocaleDateString()
+                          : '—',
+                      })
+                    : t('settings.subscribe_active_body', {
+                        status: profile.subscription_status ?? 'active',
+                        period_end: profile.current_period_end
+                          ? new Date(profile.current_period_end).toLocaleDateString()
+                          : '—',
+                      })
+                  : t('settings.subscribe_body')}
+              </span>
+            </div>
+            {profile?.tier === 'early_access' ? (
               <button
                 type="button"
-                onClick={() => void install.prompt()}
-                className="shrink-0 btn-primary px-4 py-1.5 text-sm"
+                onClick={() => void openCustomerPortal()}
+                className="btn-ghost shrink-0"
               >
-                {t('settings.install_button')}
+                {t('settings.subscribe_manage')}
               </button>
+            ) : (
+              <Link href="/subscribe" className="btn-ghost shrink-0">
+                {t('settings.subscribe_cta')}
+              </Link>
             )}
           </Card>
-        </section>
+          <Card>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{t('settings.delete_account_title')}</span>
+              <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                {t('settings.delete_account_body')}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={accountBusy === 'delete'}
+              onClick={async () => {
+                if (!confirm(t('settings.delete_account_confirm'))) return;
+                setAccountBusy('delete');
+                setAccountMsg(null);
+                const err = await deleteMyAccount();
+                setAccountMsg(err ?? t('settings.delete_account_done'));
+                setAccountBusy(null);
+              }}
+              className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-red-400/40 text-sm text-red-400 hover:border-red-400 transition disabled:opacity-50"
+            >
+              {t('settings.delete_account_cta')}
+            </button>
+          </Card>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="self-start text-xs text-text-dim underline mt-1"
+          >
+            {t('profile.sign_out')}
+          </button>
+          {accountMsg && (
+            <p className="text-xs text-text-dim font-mono">{accountMsg}</p>
+          )}
+        </Section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          {t('settings.mic_section')}
-        </h2>
+      <Section title={t('settings.audio_section')}>
         <Card>
           <div className="flex flex-col">
             <span className="text-sm font-medium">{t('settings.mic_device_label')}</span>
@@ -358,12 +280,6 @@ export function Settings() {
           </div>
           <MicPicker t={t} />
         </Card>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          {t('settings.calibration_profile')}
-        </h2>
         <Card>
           {calibration ? (
             <>
@@ -402,12 +318,64 @@ export function Settings() {
             </>
           )}
         </Card>
-      </section>
+      </Section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          {t('settings.history')}
-        </h2>
+      {isCloudConfigured && (
+        <Section title={t('settings.leaderboard')}>
+          {cloudUser && (
+            <Card>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">
+                  {t('settings.anonymous_toggle')}
+                </span>
+                <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                  {t('settings.anonymous_help')}
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={profile?.anonymous ?? false}
+                disabled={accountBusy === 'anon'}
+                onClick={async () => {
+                  setAccountBusy('anon');
+                  setAccountMsg(null);
+                  const err = await updateProfile({
+                    anonymous: !(profile?.anonymous ?? false),
+                  });
+                  if (err) setAccountMsg(err);
+                  setAccountBusy(null);
+                }}
+                className={`shrink-0 inline-flex items-center px-4 py-1.5 rounded-full border text-sm transition disabled:opacity-50 ${
+                  profile?.anonymous
+                    ? 'bg-accent text-bg border-accent'
+                    : 'bg-bg-elev text-text-dim border-border hover:border-border-strong'
+                }`}
+              >
+                {profile?.anonymous ? t('settings.anonymous_on') : t('settings.anonymous_off')}
+              </button>
+            </Card>
+          )}
+          <Card>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">
+                {t('settings.leaderboard_title')}
+              </span>
+              <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                {t('settings.leaderboard_body')}
+              </span>
+              <span className="text-xs text-text-dim font-mono mt-1">
+                🔥 5d &nbsp;·&nbsp; 💎 30d &nbsp;·&nbsp; 👑 100d
+              </span>
+            </div>
+            <span className="shrink-0 text-[10px] font-mono uppercase tracking-wider text-text-dim">
+              {t('common.coming_soon')}
+            </span>
+          </Card>
+        </Section>
+      )}
+
+      <Section title={t('settings.data_section')}>
         <Card>
           {sessions.length > 0 ? (
             <>
@@ -442,61 +410,6 @@ export function Settings() {
             </span>
           )}
         </Card>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          {t('settings.display')}
-        </h2>
-        <Card>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">{t('settings.real_rhythm_label')}</span>
-            <span className="text-xs text-text-dim leading-relaxed max-w-md">
-              {t('settings.real_rhythm_body')}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setRealRhythm(!realRhythm)}
-            role="switch"
-            aria-checked={realRhythm}
-            className={`shrink-0 inline-flex items-center px-4 py-1.5 rounded-full border text-sm transition ${
-              realRhythm
-                ? 'bg-accent text-bg border-accent'
-                : 'bg-bg-elev text-text-dim border-border hover:border-border-strong'
-            }`}
-          >
-            {realRhythm ? t('settings.real_rhythm_on') : t('settings.real_rhythm_off')}
-          </button>
-        </Card>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          {t('settings.leaderboard')}
-        </h2>
-        <Card>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">
-              {t('settings.leaderboard_title')}
-            </span>
-            <span className="text-xs text-text-dim leading-relaxed max-w-md">
-              {t('settings.leaderboard_body')}
-            </span>
-            <span className="text-xs text-text-dim font-mono mt-1">
-              🔥 5d &nbsp;·&nbsp; 💎 30d &nbsp;·&nbsp; 👑 100d
-            </span>
-          </div>
-          <span className="shrink-0 text-[10px] font-mono uppercase tracking-wider text-text-dim">
-            {t('common.coming_soon')}
-          </span>
-        </Card>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          {t('settings.backup')}
-        </h2>
         <Card>
           <div className="flex flex-col">
             <span className="text-sm font-medium">{t('settings.backup_title')}</span>
@@ -531,11 +444,95 @@ export function Settings() {
             />
           </div>
         </Card>
+        {cloudUser && (
+          <Card>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{t('settings.wipe_cloud_title')}</span>
+              <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                {t('settings.wipe_cloud_body')}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={accountBusy === 'wipe'}
+              onClick={async () => {
+                if (!confirm(t('settings.wipe_cloud_confirm'))) return;
+                setAccountBusy('wipe');
+                setAccountMsg(null);
+                const err = await wipeMyData();
+                setAccountMsg(err ?? t('settings.wipe_cloud_done'));
+                setAccountBusy(null);
+              }}
+              className="shrink-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border text-sm text-text-dim hover:border-red-400/60 hover:text-red-400 transition disabled:opacity-50"
+            >
+              {t('settings.clear')}
+            </button>
+          </Card>
+        )}
         {toast && (
           <p className="text-xs text-text-dim font-mono text-center">{toast}</p>
         )}
-      </section>
+      </Section>
+
+      {install.status !== 'already-installed' && (
+        <Section title={t('settings.install_section')}>
+          <Card>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{t('settings.install_title')}</span>
+              <span className="text-xs text-text-dim leading-relaxed max-w-md">
+                {install.status === 'can-prompt'
+                  ? t('settings.install_body_can_prompt')
+                  : install.status === 'ios-manual'
+                  ? t('settings.install_body_ios')
+                  : t('settings.install_body_unavailable')}
+              </span>
+            </div>
+            {install.status === 'can-prompt' && (
+              <button
+                type="button"
+                onClick={() => void install.prompt()}
+                className="shrink-0 btn-primary px-4 py-1.5 text-sm"
+              >
+                {t('settings.install_button')}
+              </button>
+            )}
+          </Card>
+        </Section>
+      )}
     </main>
+  );
+}
+
+/**
+ * Collapsible group wrapper. Native <details> + <summary> so it works
+ * without JS state and gets keyboard / screen-reader behaviour for
+ * free. The chevron rotates via an arbitrary descendant selector that
+ * fires when the parent <details> is `[open]`.
+ */
+function Section({
+  title,
+  children,
+  defaultOpen,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      className="flex flex-col gap-2 [&[open]_.chev]:rotate-90"
+      open={defaultOpen}
+    >
+      <summary className="list-none cursor-pointer select-none flex items-center gap-2 py-1 group [&::-webkit-details-marker]:hidden">
+        <span className="chev text-text-dim text-[10px] transition-transform duration-150">
+          ›
+        </span>
+        <h2 className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase group-hover:text-text transition">
+          {title}
+        </h2>
+      </summary>
+      <div className="flex flex-col gap-2 pt-1">{children}</div>
+    </details>
   );
 }
 

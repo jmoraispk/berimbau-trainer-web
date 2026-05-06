@@ -98,3 +98,15 @@ html, body, #root {
            bg-bg-elev border border-border text-text-dim;
   }
 }
+
+/* Calibration "missed strike" pulse — fades out a red ring overlay
+ * when an onset arrives outside the cycle window. Keyed on the
+ * miss timestamp so successive misses each retrigger the keyframe
+ * instead of merging into one slow fade. */
+@keyframes calibrate-miss-flash {
+  0%   { opacity: 0.85; transform: scale(1);    }
+  100% { opacity: 0;    transform: scale(1.06); }
+}
+.calibrate-miss-flash {
+  animation: calibrate-miss-flash 500ms ease-out forwards;
+}

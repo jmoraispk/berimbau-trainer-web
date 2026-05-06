@@ -53,10 +53,26 @@ export async function startCheckout(priceId: string): Promise<string | null> {
     'stripe-checkout',
     { body: { price_id: priceId } },
   );
-  if (error) return error.message;
+  if (error) return await readFnError(error);
   if (!data?.url) return 'No checkout URL returned.';
   window.location.assign(data.url);
   return null;
+}
+
+// Supabase wraps non-2xx responses in a FunctionsHttpError whose .message
+// is just "Edge Function returned a non-2xx status code". The actual server
+// error is on .context (a Response). Read it so users see the real reason.
+async function readFnError(error: unknown): Promise<string> {
+  try {
+    const ctx = (error as { context?: Response }).context;
+    if (ctx && typeof ctx.text === 'function') {
+      const body = await ctx.text();
+      return `${(error as Error).message}: ${body || ctx.status}`;
+    }
+  } catch {
+    // fall through
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**

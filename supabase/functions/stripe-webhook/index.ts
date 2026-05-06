@@ -53,6 +53,7 @@ async function setTierByCustomer(
     subscription_id?: string | null;
     status?: string | null;
     period_end?: string | null;
+    cancel_at_period_end?: boolean;
   },
 ) {
   const update: Record<string, unknown> = {};
@@ -60,6 +61,7 @@ async function setTierByCustomer(
   if (patch.subscription_id !== undefined) update.stripe_subscription_id = patch.subscription_id;
   if (patch.status !== undefined) update.subscription_status = patch.status;
   if (patch.period_end !== undefined) update.current_period_end = patch.period_end;
+  if (patch.cancel_at_period_end !== undefined) update.cancel_at_period_end = patch.cancel_at_period_end;
   if (Object.keys(update).length === 0) return;
   await admin.from('profiles').update(update).eq('stripe_customer_id', customerId);
 }
@@ -114,6 +116,7 @@ Deno.serve(async (req) => {
         subscription_id: sub.id,
         status: sub.status,
         period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+        cancel_at_period_end: !!sub.cancel_at_period_end,
       });
       break;
     }
@@ -125,6 +128,7 @@ Deno.serve(async (req) => {
         subscription_id: null,
         status: 'canceled',
         period_end: null,
+        cancel_at_period_end: false,
       });
       break;
     }

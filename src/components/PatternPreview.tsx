@@ -1,6 +1,5 @@
 import { type IntervalToken, type Sound, type ToquePattern } from '@/engine/rhythms';
 import { SoundSymbol } from './SoundSymbol';
-import { useRealRhythm } from '@/settings/real-rhythm';
 
 /**
  * Variable-length pattern preview. One card cell per beat (interval).
@@ -10,6 +9,10 @@ import { useRealRhythm } from '@/settings/real-rhythm';
  * Layout: capped at 4 columns so 8-beat patterns (e.g. São Bento Grande
  * Regional) wrap into a balanced 4×2 grid instead of cramming into a
  * single very-narrow row. ≤4 beats stay on one row.
+ *
+ * Display order: the trailing rest (or trailing beat for toques without
+ * a rest) becomes the first cell — matches how a capoeirista counts
+ * the toque. Audio order is unchanged.
  */
 export function PatternPreview({
   toque,
@@ -18,7 +21,6 @@ export function PatternPreview({
   toque: ToquePattern;
   cellSize?: 'normal' | 'compact';
 }) {
-  const { realRhythm } = useRealRhythm();
   if (toque.intervals.length === 0) {
     return (
       <div className="card p-4 text-center text-sm text-text-dim">
@@ -26,16 +28,10 @@ export function PatternPreview({
       </div>
     );
   }
-  // When the user has flipped the "real rhythm" preference, shift the
-  // displayed sequence by one slot so the trailing rest (or trailing
-  // beat for toques without a rest) becomes the first cell — matches
-  // how a capoeirista counts the toque. Audio order is unchanged.
-  const intervals = realRhythm
-    ? [
-        toque.intervals[toque.intervals.length - 1]!,
-        ...toque.intervals.slice(0, -1),
-      ]
-    : toque.intervals;
+  const intervals = [
+    toque.intervals[toque.intervals.length - 1]!,
+    ...toque.intervals.slice(0, -1),
+  ];
   const cycleBeats = intervals.length;
   const padClass = cellSize === 'compact' ? 'p-2' : 'p-3';
   const symbolSize = cellSize === 'compact' ? 22 : 28;

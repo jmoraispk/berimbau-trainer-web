@@ -19,9 +19,12 @@ import { useI18n, type TFn } from '@/i18n';
 /**
  * Three-stage guided calibration: TCH → DONG → DING.
  *
- * A circular cue paces the user (3-second cycle: ~2s prep ramp, ~0.4s
- * strike pulse, ~0.6s decay). Each captured strike becomes a sample with
- * a waveform thumbnail; click to play it back, × to discard.
+ * A circular cue paces the user. The cycle length is user-configurable
+ * (2/3/4/5 s, default 3 s). Each cycle is one prep ramp followed by a
+ * fixed-width "strike" window; there is no decay tail — when the
+ * strike window ends, the ring snaps back to empty and the next prep
+ * starts immediately. Each captured strike becomes a sample with a
+ * waveform thumbnail; click to play it back, × to discard.
  *
  * Tiers: 3 captured = good, 5 = great, 7+ = perfect. Skip-after-3 is the
  * escape hatch when the cluster looks tight already.
@@ -37,9 +40,10 @@ const MIN_SAMPLES_PER_CLASS = 3;
 const TIER_GOOD = 3;
 const TIER_GREAT = 5;
 const TIER_PERFECT = 7;
-const CYCLE_SEC = 3;
-const PREP_SEC = 2;
 const STRIKE_SEC = 0.4;
+const DEFAULT_CYCLE_SEC = 3;
+const MIN_CYCLE_SEC = 1;
+const MAX_CYCLE_SEC = 10;
 // Local refractory: ignore a 'quick' onset that lands within 250 ms of
 // the previous accepted one. The worklet's MIN_GAP_SEC is 80 ms (so
 // fast tch-tch in Practice still works), but a single calibration
@@ -48,12 +52,14 @@ const STRIKE_SEC = 0.4;
 const QUICK_REFRACTORY_SEC = 0.25;
 
 // Strike acceptance window inside the cycle. The visible "PLAY" pulse
-// runs [PREP_SEC, PREP_SEC + STRIKE_SEC). We accept onsets that land
-// from 200 ms before the cue (anticipation) to 250 ms after (reaction
-// slack). Strikes outside this window — e.g. while the orange ramp is
-// still filling — are ignored, so the cycle visual is meaningful.
-const ACCEPT_PRE_SEC = 0.2;
-const ACCEPT_POST_SEC = 0.25;
+// runs [prepSec, prepSec + STRIKE_SEC) where prepSec = cycleSec -
+// STRIKE_SEC. We accept onsets that land from 400 ms before the cue
+// (anticipation) to 400 ms after (reaction slack). Strikes outside
+// this window — e.g. while the orange ramp is still filling — are
+// flagged with a red ring pulse so the user can see they were
+// off-beat instead of silently dropped.
+const ACCEPT_PRE_SEC = 0.4;
+const ACCEPT_POST_SEC = 0.4;
 
 type Phase =
   | { kind: 'idle' }
@@ -78,12 +84,34 @@ export function Calibrate() {
   const cyclePhaseRef = useRef(0);
   const cyclePausedRef = useRef(false);
   const [cyclePaused, setCyclePaused] = useState(false);
+  const [cycleSec, setCycleSec] = useState<number>(DEFAULT_CYCLE_SEC);
+  // The capture closure reads cycle length from a ref so it doesn't
+  // tear down the audioBus subscription whenever the user adjusts the
+  // duration mid-stage.
+  const cycleSecRef = useRef<number>(cycleSec);
+  useEffect(() => {
+    cycleSecRef.current = cycleSec;
+  }, [cycleSec]);
+  // Stamp set by the capture handler when an onset is detected but
+  // rejected by the cycle window. The ring renders a red pulse
+  // overlay keyed on this value so successive misses re-fire.
+  const [missedAt, setMissedAt] = useState(0);
   const togglePause = () => {
     setCyclePaused((p) => {
       const next = !p;
       cyclePausedRef.current = next;
       return next;
     });
+  };
+  const adjustCycle = (delta: number) => {
+    setCycleSec((c) => clamp(c + delta, MIN_CYCLE_SEC, MAX_CYCLE_SEC));
+    // Auto-pause on adjust so the ring isn't half-way through a cycle
+    // when the new modulus kicks in. The user explicitly resumes when
+    // they're ready to strike again.
+    if (!cyclePausedRef.current) {
+      cyclePausedRef.current = true;
+      setCyclePaused(true);
+    }
   };
 
   const byClass = useMemo(() => {
@@ -116,10 +144,16 @@ export function Calibrate() {
         // with the user, so anything outside [strike-200ms, strike+250ms]
         // is treated as a stray sound.
         const phaseSec = cyclePhaseRef.current;
+        const prepSec = cycleSecRef.current - STRIKE_SEC;
         const inWindow =
-          phaseSec >= PREP_SEC - ACCEPT_PRE_SEC &&
-          phaseSec <= PREP_SEC + STRIKE_SEC + ACCEPT_POST_SEC;
-        if (!inWindow) return;
+          phaseSec >= prepSec - ACCEPT_PRE_SEC &&
+          phaseSec <= prepSec + STRIKE_SEC + ACCEPT_POST_SEC;
+        if (!inWindow) {
+          // Surface the rejection visually — silent drops feel like a
+          // broken mic, even when the strike is just off-beat.
+          setMissedAt(Date.now());
+          return;
+        }
         lastAcceptedTsRef.current = capture.timestamp;
 
         const features = extractFeatures(capture.segment, capture.sampleRate);
@@ -256,6 +290,9 @@ export function Calibrate() {
             paused={cyclePaused}
             onTogglePause={togglePause}
             phaseRef={cyclePhaseRef}
+            cycleSec={cycleSec}
+            onAdjustCycle={adjustCycle}
+            missedAt={missedAt}
             t={t}
           />
           <StageStrip byClass={byClass} activeStage={phase.stage} />
@@ -317,6 +354,9 @@ function RecordingPanel({
   paused,
   onTogglePause,
   phaseRef,
+  cycleSec,
+  onAdjustCycle,
+  missedAt,
   t,
 }: {
   activeSound: ClassifiableSound;
@@ -327,19 +367,33 @@ function RecordingPanel({
   paused: boolean;
   onTogglePause: () => void;
   phaseRef: React.MutableRefObject<number>;
+  cycleSec: number;
+  onAdjustCycle: (delta: number) => void;
+  missedAt: number;
   t: TFn;
 }) {
   return (
     <div className="w-full grid md:grid-cols-[auto_1fr] gap-6 items-start">
       <div className="flex flex-col items-center gap-2">
-        <CycleRing sound={activeSound} paused={paused} phaseRef={phaseRef} t={t} />
-        <button
-          type="button"
-          onClick={onTogglePause}
-          className="btn-ghost px-4 py-1 text-xs"
-        >
-          {paused ? t('practice.resume') : t('practice.pause')}
-        </button>
+        <CycleRing
+          sound={activeSound}
+          paused={paused}
+          phaseRef={phaseRef}
+          cycleSec={cycleSec}
+          missedAt={missedAt}
+          t={t}
+        />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onTogglePause}
+            className="btn-ghost px-4 py-1 text-xs"
+          >
+            {paused ? t('practice.resume') : t('practice.pause')}
+          </button>
+          <CycleCountdown phaseRef={phaseRef} cycleSec={cycleSec} paused={paused} />
+        </div>
+        <CycleStepper value={cycleSec} onAdjust={onAdjustCycle} t={t} />
       </div>
       <div className="flex flex-col gap-3 min-w-0">
         <LevelMeter getLevel={getLevel} t={t} />
@@ -459,9 +513,10 @@ function RecordingActions({
 // ─── Cycle ring ──────────────────────────────────────────────────────────
 
 /**
- * Circular pacing cue. The orange stroke fills clockwise over the prep
- * window (~2 s), then the whole ring flashes accent during the strike
- * window (~0.4 s), then dims for the decay (~0.6 s) before resetting.
+ * Circular pacing cue. The orange stroke fills clockwise over the
+ * prep window (cycle - STRIKE_SEC), then the whole ring flashes accent
+ * during the strike window (~0.4 s), then immediately wraps and the
+ * next prep ramp starts at 0 — no decay, no visible rewind.
  *
  * Animated via rAF — single SVG re-render per frame. Cheap.
  */
@@ -469,11 +524,15 @@ function CycleRing({
   sound,
   paused,
   phaseRef,
+  cycleSec,
+  missedAt,
   t,
 }: {
   sound: ClassifiableSound;
   paused: boolean;
   phaseRef: React.MutableRefObject<number>;
+  cycleSec: number;
+  missedAt: number;
   t: TFn;
 }) {
   const [phase, setPhase] = useState(0);
@@ -490,28 +549,28 @@ function CycleRing({
     const startWall = performance.now();
     const startPhase = phaseRef.current;
     const tick = (now: number) => {
-      const t = (startPhase + (now - startWall) / 1000) % CYCLE_SEC;
+      const t = (startPhase + (now - startWall) / 1000) % cycleSec;
       phaseRef.current = t;
       setPhase(t);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [paused, phaseRef]);
+  }, [paused, phaseRef, cycleSec]);
 
-  // Three-segment envelope:
-  //   [0, PREP)            — fill ramps 0→1
-  //   [PREP, PREP+STRIKE)  — full bright pulse
-  //   [PREP+STRIKE, CYCLE) — decay 1→0
+  // Two-segment envelope:
+  //   [0, prep)            — fill ramps 0→1
+  //   [prep, cycleSec)     — full bright pulse (strike)
+  // The cycle wraps right after the strike, so the ring snaps to
+  // empty and the next ramp begins immediately. No "rewind" visual.
+  const prepSec = cycleSec - STRIKE_SEC;
   let fill: number;
   let strike = false;
-  if (phase < PREP_SEC) {
-    fill = phase / PREP_SEC;
-  } else if (phase < PREP_SEC + STRIKE_SEC) {
+  if (phase < prepSec) {
+    fill = phase / prepSec;
+  } else {
     fill = 1;
     strike = true;
-  } else {
-    fill = Math.max(0, 1 - (phase - PREP_SEC - STRIKE_SEC) / (CYCLE_SEC - PREP_SEC - STRIKE_SEC));
   }
 
   const SIZE = 200;
@@ -523,6 +582,26 @@ function CycleRing({
 
   return (
     <div className="relative" style={{ width: SIZE, height: SIZE }}>
+      {/* Re-keyed on every miss so a rapid sequence of misses each
+       *  retrigger the keyframe instead of merging into one fade. */}
+      {missedAt > 0 && (
+        <svg
+          key={missedAt}
+          width={SIZE}
+          height={SIZE}
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          className="absolute inset-0 calibrate-miss-flash pointer-events-none"
+        >
+          <circle
+            cx={SIZE / 2}
+            cy={SIZE / 2}
+            r={r}
+            stroke="#ef4444"
+            strokeWidth={STROKE * 1.4}
+            fill="none"
+          />
+        </svg>
+      )}
       <svg
         width={SIZE}
         height={SIZE}
@@ -883,3 +962,92 @@ function Saved({
   );
 }
 
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+// ─── Cycle countdown + stepper ───────────────────────────────────────────
+
+/**
+ * Tiny live counter showing the seconds left in the current cycle.
+ * Drives its own rAF + state so the parent doesn't re-render at 60 fps;
+ * we throttle React updates to ~10 Hz, which is plenty for a label
+ * that only carries one decimal digit.
+ */
+function CycleCountdown({
+  phaseRef,
+  cycleSec,
+  paused,
+}: {
+  phaseRef: React.MutableRefObject<number>;
+  cycleSec: number;
+  paused: boolean;
+}) {
+  const [remaining, setRemaining] = useState(cycleSec);
+  useEffect(() => {
+    if (paused) return;
+    let raf = 0;
+    let lastUpdate = 0;
+    const tick = (now: number) => {
+      if (now - lastUpdate >= 100) {
+        const r = Math.max(0, cycleSec - phaseRef.current);
+        setRemaining(r);
+        lastUpdate = now;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [cycleSec, paused, phaseRef]);
+  return (
+    <span className="text-[10px] font-mono text-text-dim tabular-nums w-9">
+      {remaining.toFixed(1)}s
+    </span>
+  );
+}
+
+/**
+ * −/+ stepper for cycle length. Calling `onAdjust(±1)` clamps within
+ * MIN/MAX and auto-pauses the ring (the parent owns that logic) so
+ * the user can dial in the duration without the visual mid-cycling.
+ */
+function CycleStepper({
+  value,
+  onAdjust,
+  t,
+}: {
+  value: number;
+  onAdjust: (delta: number) => void;
+  t: TFn;
+}) {
+  const dec = () => onAdjust(-1);
+  const inc = () => onAdjust(+1);
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+        {t('calibrate.cycle_label')}
+      </span>
+      <button
+        type="button"
+        onClick={dec}
+        disabled={value <= MIN_CYCLE_SEC}
+        aria-label={t('calibrate.cycle_decrease')}
+        className="w-6 h-6 rounded-md bg-bg-elev border border-border text-text-dim hover:border-border-strong hover:text-text transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-sm leading-none"
+      >
+        −
+      </button>
+      <span className="text-xs font-mono text-text tabular-nums w-7 text-center">
+        {value}s
+      </span>
+      <button
+        type="button"
+        onClick={inc}
+        disabled={value >= MAX_CYCLE_SEC}
+        aria-label={t('calibrate.cycle_increase')}
+        className="w-6 h-6 rounded-md bg-bg-elev border border-border text-text-dim hover:border-border-strong hover:text-text transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-sm leading-none"
+      >
+        +
+      </button>
+    </div>
+  );
+}

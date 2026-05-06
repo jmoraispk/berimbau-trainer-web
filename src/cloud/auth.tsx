@@ -25,6 +25,9 @@ export interface CloudProfile {
   tier: 'free' | 'early_access';
   subscription_status: string | null;
   current_period_end: string | null;
+  /** Stripe scheduled cancel — subscription stays active through
+   *  current_period_end, then transitions to free. */
+  cancel_at_period_end: boolean;
 }
 
 interface AuthCtx {
@@ -98,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, display_name, anonymous, tier, subscription_status, current_period_end')
+      .select('id, display_name, anonymous, tier, subscription_status, current_period_end, cancel_at_period_end')
       .eq('id', user.id)
       .maybeSingle();
     if (error) {

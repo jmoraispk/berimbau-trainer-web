@@ -23,7 +23,6 @@ import {
 import { saveSession } from '@/storage/sessions-store';
 import { pushSession } from '@/cloud/sync';
 import { useI18n, type TFn } from '@/i18n';
-import { useRealRhythm } from '@/settings/real-rhythm';
 
 /**
  * Practice screen — rhythm timeline + mic scoring.
@@ -159,13 +158,6 @@ export function Practice() {
     displayModeRef.current = displayMode;
   }, [displayMode]);
 
-  // Real-rhythm preference, mirrored into a ref so the canvas loop reads
-  // it without forcing a re-render on toggle.
-  const { realRhythm } = useRealRhythm();
-  const realRhythmRef = useRef(realRhythm);
-  useEffect(() => {
-    realRhythmRef.current = realRhythm;
-  }, [realRhythm]);
   const toggleDisplayMode = useCallback(() => {
     setDisplayMode((prev) => {
       const next: DisplayMode = prev === 'linear' ? 'circular' : 'linear';
@@ -429,7 +421,6 @@ export function Practice() {
           renderNow,
           outcomesRef.current,
           firstBeatAtRef.current,
-          realRhythmRef.current,
         );
       } else if (scheduler) {
         paintLinear(ctx, w, h, scheduler, renderNow, outcomesRef.current);
@@ -1047,7 +1038,6 @@ function paintCircular(
   renderNow: number,
   outcomes: Map<number, BeatResult & { at: number }>,
   firstBeatAt: number,
-  realRhythm: boolean,
 ) {
   const cx = w / 2;
   const cy = h / 2;
@@ -1056,13 +1046,11 @@ function paintCircular(
   if (cycleSeconds <= 0) return;
   const intervalLen = scheduler['options'].toque.intervals.length;
   const slotCount = intervalLen * 2;
-  // Slot 0 of the pattern lands at 3 o'clock (angle 0) instead of
-  // 12 o'clock — the previous −π/2 baseline is gone. The optional
-  // realRhythm phase shift moves the whole frame an extra slot
-  // clockwise so the trailing rest takes the 3 o'clock seat. Sweep,
-  // beats, and detected notes all read from the same `phase` so
-  // audio↔visual sync is preserved.
-  const phase = realRhythm ? (2 * Math.PI) / intervalLen : 0;
+  // The pattern is drawn one slot rotated clockwise so the trailing
+  // rest takes the 3 o'clock seat — matches how a capoeirista counts
+  // the toque. Sweep, beats, and detected notes all read from the
+  // same `phase` so audio↔visual sync is preserved.
+  const phase = (2 * Math.PI) / intervalLen;
 
   // Background ring
   ctx.strokeStyle = '#1a2135';

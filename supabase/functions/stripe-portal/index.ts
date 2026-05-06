@@ -19,19 +19,34 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2024-12-18.acacia',
 });
 
+const ALLOWED_ORIGINS = new Set([
+  'https://berimbau.pro',
+  'https://www.berimbau.pro',
+  'http://localhost:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:4173',
+]);
+
+function pickBaseUrl(req: Request, fallbackUrl: string): string {
+  const origin = req.headers.get('origin') ?? '';
+  if (ALLOWED_ORIGINS.has(origin)) return origin;
+  try { return new URL(fallbackUrl).origin; } catch { return 'https://berimbau.pro'; }
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'content-type': 'application/json',
       'access-control-allow-origin': '*',
-      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info',
     },
   });
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type' } });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info' } });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
   const auth = req.headers.get('Authorization');
@@ -52,9 +67,13 @@ Deno.serve(async (req) => {
     .single();
   if (!prof?.stripe_customer_id) return json({ error: 'no stripe customer for this user' }, 400);
 
+  const baseUrl = pickBaseUrl(
+    req,
+    Deno.env.get('STRIPE_PORTAL_RETURN_URL') ?? 'https://berimbau.pro/settings',
+  );
   const session = await stripe.billingPortal.sessions.create({
     customer: prof.stripe_customer_id,
-    return_url: Deno.env.get('STRIPE_PORTAL_RETURN_URL') ?? 'https://berimbau.pro/settings',
+    return_url: `${baseUrl}/settings`,
   });
 
   return json({ url: session.url });
