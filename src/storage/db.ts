@@ -6,16 +6,18 @@
  * owned by a thin module under src/storage/.
  *
  *   DB: berimbau-trainer
- *     calibration  (v1): keyPath 'id'   — calibration profiles
- *     sessions     (v2): autoIncrement  — completed practice sessions
+ *     calibration  (v1): keyPath 'id'      — calibration profiles
+ *     sessions     (v2): autoIncrement     — completed practice sessions
+ *     lab_clips    (v3): keyPath 'slotId'  — Lab dev-mode raw recordings
  */
 
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'berimbau-trainer';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const CALIBRATION_STORE = 'calibration';
 export const SESSIONS_STORE = 'sessions';
+export const LAB_CLIPS_STORE = 'lab_clips';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -32,6 +34,9 @@ export function getDB(): Promise<IDBPDatabase> {
             autoIncrement: true,
           });
           sessions.createIndex('by_endedAt', 'endedAt');
+        }
+        if (oldVersion < 3) {
+          db.createObjectStore(LAB_CLIPS_STORE, { keyPath: 'slotId' });
         }
       },
     });

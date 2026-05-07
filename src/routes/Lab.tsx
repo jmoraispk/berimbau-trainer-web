@@ -10,6 +10,11 @@ import { extractFeatures } from '@/engine/features';
 import { classify } from '@/engine/classifier';
 import { computeProfiles, type CalibrationSample, type SavedCalibration } from '@/engine/calibration';
 import { CalibrationScatter } from '@/components/CalibrationScatter';
+import {
+  deleteLabClip,
+  listLabClips,
+  saveLabClip,
+} from '@/storage/clips-store';
 import type { ClassifiableSound } from '@/engine/profiles';
 import { SOUND_COLORS, SOUND_LABELS } from '@/engine/rhythms';
 import { SoundSymbol } from '@/components/SoundSymbol';
@@ -317,6 +322,27 @@ export function Lab() {
     };
   }, []);
 
+  // Hydrate clips from IDB on mount so dev sessions survive a refresh.
+  useEffect(() => {
+    let cancelled = false;
+    void listLabClips().then((records) => {
+      if (cancelled) return;
+      const next: Partial<Record<SlotId, Clip>> = {};
+      for (const r of records) {
+        next[r.slotId as SlotId] = {
+          samples: r.samples,
+          sampleRate: r.sampleRate,
+          durationSec: r.durationSec,
+          recordedAt: r.recordedAt,
+        };
+      }
+      setClips(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /**
    * Idempotent mic starter — used by both the Live "Start" button and
    * the Recordings tab, where clicking Record on an empty slot should
@@ -404,15 +430,18 @@ export function Lab() {
     setRecordingStartedAt(performance.now());
     try {
       const { samples, sampleRate } = await input.recordClip(clipLengthSec);
-      setClips((prev) => ({
-        ...prev,
-        [slot]: {
-          samples,
-          sampleRate,
-          durationSec: clipLengthSec,
-          recordedAt: Date.now(),
-        },
-      }));
+      const recordedAt = Date.now();
+      const clip: Clip = { samples, sampleRate, durationSec: clipLengthSec, recordedAt };
+      setClips((prev) => ({ ...prev, [slot]: clip }));
+      // Persist — fire-and-forget; the IDB write is small and the user
+      // doesn't need to wait for it to read the strike feedback.
+      void saveLabClip({
+        slotId: slot,
+        samples,
+        sampleRate,
+        durationSec: clipLengthSec,
+        recordedAt,
+      });
     } catch (err) {
       console.warn('[lab] recordClip failed', err);
     } finally {
@@ -441,6 +470,21 @@ export function Lab() {
       delete next[slot];
       return next;
     });
+    void deleteLabClip(slot);
+  };
+
+  const onDownloadClip = (slot: SlotId) => {
+    const clip = clips[slot];
+    if (!clip) return;
+    const blob = encodeWavFloat32(clip.samples, clip.sampleRate);
+    const stamp = new Date(clip.recordedAt).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    downloadBlob(blob, `berimbau-lab-${slot}-${stamp}.wav`);
+  };
+
+  const onDownloadAllClips = () => {
+    for (const slot of SLOT_IDS) {
+      if (clips[slot]) onDownloadClip(slot);
+    }
   };
 
   // Mapping for the (centroid, f0) scatter at the bottom of the page.
@@ -597,6 +641,8 @@ export function Lab() {
               onRecord={(slot) => void onRecordClip(slot)}
               onPlay={(slot) => void onPlayClip(slot)}
               onClear={onClearClip}
+              onDownload={onDownloadClip}
+              onDownloadAll={onDownloadAllClips}
             />
           )}
           <SelectedStrikePanel
@@ -681,6 +727,8 @@ function RecordingsPanel({
   onRecord,
   onPlay,
   onClear,
+  onDownload,
+  onDownloadAll,
 }: {
   clips: Partial<Record<SlotId, Clip>>;
   clipLengthSec: number;
@@ -691,7 +739,10 @@ function RecordingsPanel({
   onRecord: (slot: SlotId) => void;
   onPlay: (slot: SlotId) => void;
   onClear: (slot: SlotId) => void;
+  onDownload: (slot: SlotId) => void;
+  onDownloadAll: () => void;
 }) {
+  const anyClip = Object.keys(clips).length > 0;
   return (
     <div className="card flex flex-col gap-3 px-4 py-3">
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
@@ -699,6 +750,15 @@ function RecordingsPanel({
           Recordings — replay through the pipeline
         </span>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onDownloadAll}
+            disabled={!anyClip}
+            className="btn-ghost px-2 py-0.5 text-[10px] disabled:opacity-40"
+            title="Download all clips as Float32 WAV files"
+          >
+            ↓ Download all
+          </button>
           <span className="text-[10px] font-mono text-text-dim">clip length</span>
           <div className="flex gap-1">
             {CLIP_LENGTH_OPTIONS.map((opt) => {
@@ -739,12 +799,13 @@ function RecordingsPanel({
             onRecord={() => onRecord(id)}
             onPlay={() => onPlay(id)}
             onClear={() => onClear(id)}
+            onDownload={() => onDownload(id)}
           />
         ))}
       </div>
 
       <p className="text-[10px] text-text-dim leading-relaxed pt-1">
-        Record once, then replay through the worklet — every parameter change runs against the same input. Clips live in memory; a refresh wipes them.
+        Record once, then replay through the worklet — every parameter change runs against the same input. Clips persist locally (IndexedDB); ↓ exports as Float32 WAV for offline analysis.
       </p>
     </div>
   );
@@ -763,6 +824,7 @@ function ClipSlot({
   onRecord,
   onPlay,
   onClear,
+  onDownload,
 }: {
   id: SlotId;
   label: string;
@@ -777,6 +839,7 @@ function ClipSlot({
   onRecord: () => void;
   onPlay: () => void;
   onClear: () => void;
+  onDownload: () => void;
 }) {
   // Tick the elapsed counter while recording so the user sees a live
   // countdown. ~10 Hz is plenty for one decimal place.
@@ -834,6 +897,16 @@ function ClipSlot({
         }`}
       >
         {isPlaying ? '▷ Playing' : '▷ Play'}
+      </button>
+      <button
+        type="button"
+        onClick={onDownload}
+        disabled={!clip || isRecording || isPlaying}
+        title="Download as Float32 WAV"
+        aria-label="Download clip"
+        className="shrink-0 w-6 h-6 rounded text-text-dim/70 hover:text-text hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center text-[12px] leading-none"
+      >
+        ↓
       </button>
       <button
         type="button"
@@ -1645,6 +1718,54 @@ function HelpRow({ text }: { text: string }) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Minimal Float32 mono WAV encoder. Writes a 44-byte header + the raw
+ * samples little-endian. Produces files that scipy.io.wavfile,
+ * librosa, Audacity, ffmpeg, and the browser <audio> element all
+ * read without conversion. Float32 is chosen over Int16 so the
+ * captured signal is lossless — no scaling, no clipping.
+ */
+function encodeWavFloat32(samples: Float32Array, sampleRate: number): Blob {
+  const bytesPerSample = 4;
+  const numChannels = 1;
+  const dataSize = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);                   // fmt chunk size
+  view.setUint16(20, 3, true);                    // format: 3 = IEEE float
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // byte rate
+  view.setUint16(32, numChannels * bytesPerSample, true);              // block align
+  view.setUint16(34, 32, true);                   // bits per sample
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    view.setFloat32(off, samples[i]!, true);
+    off += 4;
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 function peakOf(segment: Float32Array): number {
   let p = 0;
