@@ -37,6 +37,8 @@ type Phase =
   | { kind: 'running' }
   | { kind: 'error'; message: string };
 
+type StrikeSourceKind = 'live' | 'record' | 'play';
+
 interface LabStrike {
   /** AudioContext timestamp from the worklet — used as a stable key. */
   timestamp: number;
@@ -54,6 +56,10 @@ interface LabStrike {
   confidence: number;
   /** User tag for building the experimental profile. */
   tagged: ClassifiableSound | null;
+  /** What was driving the worklet when this strike fired. */
+  sourceKind: StrikeSourceKind;
+  /** Slot this strike came from (record or play); null for live mic. */
+  sourceSlot: SlotId | null;
 }
 
 const MAX_STRIKES = 200;
@@ -191,6 +197,17 @@ export function Lab() {
   const [recordingSlot, setRecordingSlot] = useState<SlotId | null>(null);
   const [recordingStartedAt, setRecordingStartedAt] = useState(0);
   const [playingSlot, setPlayingSlot] = useState<SlotId | null>(null);
+  // Refs mirror the slot state so the audioBus.subscribeRawCapture
+  // closure stamps strikes with the correct source without having to
+  // resubscribe on every state change.
+  const recordingSlotRef = useRef<SlotId | null>(null);
+  const playingSlotRef = useRef<SlotId | null>(null);
+  useEffect(() => {
+    recordingSlotRef.current = recordingSlot;
+  }, [recordingSlot]);
+  useEffect(() => {
+    playingSlotRef.current = playingSlot;
+  }, [playingSlot]);
   const [clipLengthSec, setClipLengthSec] = useState<number>(DEFAULT_CLIP_LENGTH_SEC);
   const [sessionStart, setSessionStart] = useState(0);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
@@ -279,6 +296,19 @@ export function Lab() {
         const result = profile
           ? classify(features.f0, features.centroid, profile.profiles)
           : { sound: 'unknown' as const, confidence: 0 };
+        // Stamp source: a record/play in flight wins over plain live mic.
+        // Auto-tag when the slot itself is a sound (TCH/DONG/DING) — for
+        // 'song' the slot doesn't imply a class, so leave tagged null.
+        const playSlot = playingSlotRef.current;
+        const recordSlot = recordingSlotRef.current;
+        const sourceKind: StrikeSourceKind = playSlot
+          ? 'play'
+          : recordSlot
+            ? 'record'
+            : 'live';
+        const sourceSlot = playSlot ?? recordSlot ?? null;
+        const autoTagged: ClassifiableSound | null =
+          sourceSlot && sourceSlot !== 'song' ? sourceSlot : null;
         setStrikes((prev) =>
           [
             {
@@ -294,7 +324,9 @@ export function Lab() {
               preSec: capture.preSec,
               classified: result.sound,
               confidence: result.confidence,
-              tagged: null,
+              tagged: autoTagged,
+              sourceKind,
+              sourceSlot,
             } as LabStrike,
             ...prev,
           ].slice(0, MAX_STRIKES),
@@ -426,6 +458,7 @@ export function Lab() {
   const onRecordClip = async (slot: SlotId) => {
     const input = await ensureMicRunning();
     if (!input) return;
+    recordingSlotRef.current = slot;
     setRecordingSlot(slot);
     setRecordingStartedAt(performance.now());
     try {
@@ -445,6 +478,7 @@ export function Lab() {
     } catch (err) {
       console.warn('[lab] recordClip failed', err);
     } finally {
+      recordingSlotRef.current = null;
       setRecordingSlot(null);
     }
   };
@@ -454,12 +488,24 @@ export function Lab() {
     if (!clip) return;
     const input = await ensureMicRunning();
     if (!input) return;
+    // Clear strikes from this slot's prior plays — each replay is an
+    // iteration on the same input, so showing the previous run alongside
+    // would just be visual noise. Other slots' plays + live strikes stay.
+    setStrikes((prev) =>
+      prev.filter((s) => !(s.sourceKind === 'play' && s.sourceSlot === slot)),
+    );
+    // Set the ref directly *before* the async playClip call so the
+    // capture closure already sees the source by the time the first
+    // onset of the playback arrives. The state-driven ref sync runs
+    // on the next render, which is too late.
+    playingSlotRef.current = slot;
     setPlayingSlot(slot);
     try {
       await input.playClip(clip.samples, clip.sampleRate);
     } catch (err) {
       console.warn('[lab] playClip failed', err);
     } finally {
+      playingSlotRef.current = null;
       setPlayingSlot(null);
     }
   };
@@ -1411,10 +1457,26 @@ function StrikeRow({
           onPlay(strike);
         }
       }}
-      className="grid grid-cols-[3rem_minmax(0,1fr)_5rem_1.25rem] gap-2 items-center px-2 py-1.5 border-b border-border/30 hover:bg-bg-elev/50 cursor-pointer text-xs font-mono tabular-nums focus:outline-none focus-visible:bg-bg-elev/70"
+      className="grid grid-cols-[4rem_minmax(0,1fr)_5rem_1.25rem] gap-2 items-center px-2 py-1.5 border-b border-border/30 hover:bg-bg-elev/50 cursor-pointer text-xs font-mono tabular-nums focus:outline-none focus-visible:bg-bg-elev/70"
       title="Click to play"
     >
-      <span className="text-text-dim">{tSec.toFixed(1)}s</span>
+      <div className="flex flex-col leading-tight">
+        <span className="text-text-dim">{tSec.toFixed(1)}s</span>
+        {strike.sourceKind !== 'live' && strike.sourceSlot && (
+          <span
+            className={`text-[9px] uppercase tracking-wider ${
+              strike.sourceKind === 'play' ? 'text-accent' : 'text-red-400/80'
+            }`}
+            title={
+              strike.sourceKind === 'play'
+                ? `from ${strike.sourceSlot} playback`
+                : `from ${strike.sourceSlot} recording`
+            }
+          >
+            {strike.sourceKind === 'play' ? '▷' : '●'} {strike.sourceSlot}
+          </span>
+        )}
+      </div>
       <div className="grid grid-cols-6 gap-2 items-baseline">
         <span style={{ color: classColor }} className="flex items-center gap-1 text-[11px]">
           {classified !== 'unknown' ? (

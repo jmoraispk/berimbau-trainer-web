@@ -363,7 +363,12 @@ export class AudioInput {
     buffer.getChannelData(0).set(samples);
     const src = ctx.createBufferSource();
     src.buffer = buffer;
+    // Fan out: worklet sees the audio for onset detection, destination
+    // plays it out the speakers so the user can hear what the engine
+    // is actually analyzing. Mic-recorded clips never go to destination
+    // through the normal mic path, which is why playback was silent.
     src.connect(worklet);
+    src.connect(ctx.destination);
     return new Promise((resolve) => {
       src.onended = () => {
         try { src.disconnect(); } catch { /* fine */ }
