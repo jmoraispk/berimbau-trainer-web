@@ -37,7 +37,7 @@ type Phase =
   | { kind: 'running' }
   | { kind: 'error'; message: string };
 
-type StrikeSourceKind = 'live' | 'record' | 'play';
+type StrikeSourceKind = 'live' | 'play';
 
 interface LabStrike {
   /** AudioContext timestamp from the worklet — used as a stable key. */
@@ -289,6 +289,12 @@ export function Lab() {
   useEffect(() => {
     if (phase.kind !== 'running') return;
     const unsub = audioBus.subscribeRawCapture((capture) => {
+      // Recording is pure capture — no analysis, no strikes. The
+      // worklet still detects onsets internally (it's cheap), but the
+      // UI ignores them so the user can focus on producing a clean
+      // recording. Detection runs on Play, where the user is
+      // explicitly comparing parameter settings against fixed audio.
+      if (recordingSlotRef.current) return;
       if (capture.kind === 'quick') {
         const features = extractFeatures(capture.segment, capture.sampleRate);
         const peak = peakOf(capture.segment);
@@ -296,17 +302,13 @@ export function Lab() {
         const result = profile
           ? classify(features.f0, features.centroid, profile.profiles)
           : { sound: 'unknown' as const, confidence: 0 };
-        // Stamp source: a record/play in flight wins over plain live mic.
-        // Auto-tag when the slot itself is a sound (TCH/DONG/DING) — for
-        // 'song' the slot doesn't imply a class, so leave tagged null.
+        // Stamp source: a play in flight stamps the slot; otherwise
+        // it's plain live-mic. Recording is filtered out above.
+        // Auto-tag when the slot itself is a sound (TCH/DONG/DING) —
+        // for 'song' the slot doesn't imply a class, so leave null.
         const playSlot = playingSlotRef.current;
-        const recordSlot = recordingSlotRef.current;
-        const sourceKind: StrikeSourceKind = playSlot
-          ? 'play'
-          : recordSlot
-            ? 'record'
-            : 'live';
-        const sourceSlot = playSlot ?? recordSlot ?? null;
+        const sourceKind: StrikeSourceKind = playSlot ? 'play' : 'live';
+        const sourceSlot = playSlot ?? null;
         const autoTagged: ClassifiableSound | null =
           sourceSlot && sourceSlot !== 'song' ? sourceSlot : null;
         setStrikes((prev) =>
@@ -731,6 +733,54 @@ export function Lab() {
   );
 }
 
+/**
+ * Compact horizontal waveform for a recorded clip. Downsamples to
+ * ~600 columns (one column per ~10–25 ms depending on clip length)
+ * and draws a min/max envelope per column — much cleaner than a
+ * polyline for multi-second clips, and proves visually that the
+ * recording is one continuous stretch.
+ */
+function ClipWaveform({ clip }: { clip: Clip }) {
+  const path = useMemo(() => waveformEnvelope(clip.samples, 600, 36), [clip.samples]);
+  return (
+    <svg viewBox="0 0 600 36" className="block w-full h-9 rounded-md bg-bg/60 border border-border/40">
+      <path d={path} fill="#5a6480" />
+    </svg>
+  );
+}
+
+function waveformEnvelope(samples: Float32Array, w: number, h: number): string {
+  if (samples.length === 0) return '';
+  const cols = Math.min(w, samples.length);
+  const stride = samples.length / cols;
+  const yMid = h / 2;
+  // Find global peak so the envelope is normalized — quiet clips stay readable.
+  let peak = 0;
+  for (let i = 0; i < samples.length; i += Math.max(1, Math.floor(stride / 4))) {
+    const v = Math.abs(samples[i]!);
+    if (v > peak) peak = v;
+  }
+  const scale = peak > 0 ? (h * 0.45) / peak : 0;
+  // Two passes: top edge left→right, bottom edge right→left, closed = filled blob.
+  let top = '';
+  let bottom = '';
+  for (let c = 0; c < cols; c++) {
+    const start = Math.floor(c * stride);
+    const end = Math.min(samples.length, Math.floor((c + 1) * stride));
+    let lo = 0;
+    let hi = 0;
+    for (let i = start; i < end; i++) {
+      const v = samples[i]!;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    const x = (c / Math.max(1, cols - 1)) * w;
+    top += `${c === 0 ? 'M' : 'L'}${x.toFixed(1)},${(yMid - hi * scale).toFixed(1)} `;
+    bottom = `L${x.toFixed(1)},${(yMid - lo * scale).toFixed(1)} ` + bottom;
+  }
+  return top + bottom + 'Z';
+}
+
 // ─── Tab bar ─────────────────────────────────────────────────────────
 
 function TabBar({ value, onChange }: { value: LabTab; onChange: (t: LabTab) => void }) {
@@ -906,64 +956,70 @@ function ClipSlot({
       : 'border-border';
 
   return (
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-elev/40 border ${borderClass} transition`}>
-      <div className="shrink-0 w-7 h-7 flex items-center justify-center">
-        {sound ? <SoundSymbol sound={sound} size={20} glow={false} /> : <span className="text-[10px] font-mono text-text-dim">♪</span>}
+    <div className={`flex flex-col gap-2 px-3 py-2 rounded-lg bg-bg-elev/40 border ${borderClass} transition`}>
+      <div className="flex items-center gap-3">
+        <div className="shrink-0 w-7 h-7 flex items-center justify-center">
+          {sound ? <SoundSymbol sound={sound} size={20} glow={false} /> : <span className="text-[10px] font-mono text-text-dim">♪</span>}
+        </div>
+        <div className="flex flex-col flex-1 min-w-0">
+          <span className="text-sm font-medium leading-none">{label}</span>
+          <span className="text-[10px] font-mono text-text-dim mt-0.5">
+            {isRecording
+              ? `recording · ${remaining.toFixed(1)}s left`
+              : clip
+                ? `${clip.durationSec.toFixed(1)}s · ${(clip.samples.length / 1024).toFixed(0)} KS`
+                : 'no clip'}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onRecord}
+          disabled={isRecording || recordDisabled || isPlaying}
+          className={`shrink-0 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider border transition disabled:opacity-40 disabled:cursor-not-allowed ${
+            isRecording
+              ? 'border-red-400 text-red-400 bg-red-400/10'
+              : 'border-border text-text-dim hover:text-text hover:border-border-strong'
+          }`}
+        >
+          ● {clip ? 'Re-record' : 'Record'}
+        </button>
+        <button
+          type="button"
+          onClick={onPlay}
+          disabled={!clip || isRecording || isPlaying || playDisabled}
+          className={`shrink-0 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider border transition disabled:opacity-40 disabled:cursor-not-allowed ${
+            isPlaying
+              ? 'border-accent text-accent bg-accent/10'
+              : 'border-border text-text-dim hover:text-text hover:border-border-strong'
+          }`}
+        >
+          {isPlaying ? '▷ Playing' : '▷ Play'}
+        </button>
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={!clip || isRecording || isPlaying}
+          title="Download as Float32 WAV"
+          aria-label="Download clip"
+          className="shrink-0 w-6 h-6 rounded text-text-dim/70 hover:text-text hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center text-[12px] leading-none"
+        >
+          ↓
+        </button>
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={!clip || isRecording || isPlaying}
+          title="Clear clip"
+          aria-label="Clear clip"
+          className="shrink-0 w-6 h-6 rounded text-text-dim/60 hover:text-red-400 hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center text-[12px] leading-none"
+        >
+          ×
+        </button>
       </div>
-      <div className="flex flex-col flex-1 min-w-0">
-        <span className="text-sm font-medium leading-none">{label}</span>
-        <span className="text-[10px] font-mono text-text-dim mt-0.5">
-          {isRecording
-            ? `recording · ${remaining.toFixed(1)}s left`
-            : clip
-              ? `${clip.durationSec.toFixed(1)}s · ${(clip.samples.length / 1024).toFixed(0)} KS`
-              : 'no clip'}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={onRecord}
-        disabled={isRecording || recordDisabled || isPlaying}
-        className={`shrink-0 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider border transition disabled:opacity-40 disabled:cursor-not-allowed ${
-          isRecording
-            ? 'border-red-400 text-red-400 bg-red-400/10'
-            : 'border-border text-text-dim hover:text-text hover:border-border-strong'
-        }`}
-      >
-        ● {clip ? 'Re-record' : 'Record'}
-      </button>
-      <button
-        type="button"
-        onClick={onPlay}
-        disabled={!clip || isRecording || isPlaying || playDisabled}
-        className={`shrink-0 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider border transition disabled:opacity-40 disabled:cursor-not-allowed ${
-          isPlaying
-            ? 'border-accent text-accent bg-accent/10'
-            : 'border-border text-text-dim hover:text-text hover:border-border-strong'
-        }`}
-      >
-        {isPlaying ? '▷ Playing' : '▷ Play'}
-      </button>
-      <button
-        type="button"
-        onClick={onDownload}
-        disabled={!clip || isRecording || isPlaying}
-        title="Download as Float32 WAV"
-        aria-label="Download clip"
-        className="shrink-0 w-6 h-6 rounded text-text-dim/70 hover:text-text hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center text-[12px] leading-none"
-      >
-        ↓
-      </button>
-      <button
-        type="button"
-        onClick={onClear}
-        disabled={!clip || isRecording || isPlaying}
-        title="Clear clip"
-        aria-label="Clear clip"
-        className="shrink-0 w-6 h-6 rounded text-text-dim/60 hover:text-red-400 hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center text-[12px] leading-none"
-      >
-        ×
-      </button>
+      {/* Continuous waveform of the recorded clip — reassures the user
+       *  that what was captured is one unbroken stretch of audio, not
+       *  a sequence of chunks. Hidden until a clip exists. */}
+      {clip && !isRecording && <ClipWaveform clip={clip} />}
     </div>
   );
 }
@@ -1462,18 +1518,12 @@ function StrikeRow({
     >
       <div className="flex flex-col leading-tight">
         <span className="text-text-dim">{tSec.toFixed(1)}s</span>
-        {strike.sourceKind !== 'live' && strike.sourceSlot && (
+        {strike.sourceKind === 'play' && strike.sourceSlot && (
           <span
-            className={`text-[9px] uppercase tracking-wider ${
-              strike.sourceKind === 'play' ? 'text-accent' : 'text-red-400/80'
-            }`}
-            title={
-              strike.sourceKind === 'play'
-                ? `from ${strike.sourceSlot} playback`
-                : `from ${strike.sourceSlot} recording`
-            }
+            className="text-[9px] uppercase tracking-wider text-accent"
+            title={`from ${strike.sourceSlot} playback`}
           >
-            {strike.sourceKind === 'play' ? '▷' : '●'} {strike.sourceSlot}
+            ▷ {strike.sourceSlot}
           </span>
         )}
       </div>
