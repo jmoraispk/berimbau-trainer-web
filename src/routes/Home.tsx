@@ -24,6 +24,7 @@ import {
 } from '@/i18n';
 import { useAuth } from '@/cloud/auth';
 import { isCloudConfigured } from '@/cloud/supabase';
+import { useDevMode } from '@/settings/dev-mode';
 
 const SOUNDS: Sound[] = ['ch', 'dong', 'ding'];
 
@@ -31,6 +32,7 @@ export function Home() {
   const [, navigate] = useLocation();
   const { t } = useI18n();
   const { user } = useAuth();
+  const [devMode] = useDevMode();
   const [toqueName, setToqueName] = useState<ToqueName>('Angola');
   const toque = TOQUES[toqueName];
   const [calibration, setCalibration] = useState<SavedCalibration | null>(null);
@@ -90,6 +92,15 @@ export function Home() {
             className="inline-flex items-center px-3 h-9 rounded-full bg-bg-elev/80 border border-border text-text-dim hover:text-text hover:border-border-strong transition text-[11px] font-mono uppercase tracking-wider"
           >
             {user ? t('home.profile_link') : t('home.sign_in_link')}
+          </Link>
+        )}
+        {devMode && (
+          <Link
+            href="/lab"
+            className="inline-flex items-center px-3 h-9 rounded-full bg-accent/15 border border-accent/40 text-accent hover:bg-accent/25 hover:border-accent/60 transition text-[11px] font-mono uppercase tracking-wider"
+            title={t('home.lab_link_title')}
+          >
+            {t('home.lab_link')}
           </Link>
         )}
         <Link

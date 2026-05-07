@@ -18,6 +18,7 @@ import {
 } from '@/storage/backup';
 import { formatRelativeTime, useI18n, type TFn } from '@/i18n';
 import { usePwaInstall } from '@/settings/use-pwa-install';
+import { useDevMode } from '@/settings/dev-mode';
 import { getMicDeviceId, setMicDeviceId } from '@/audio/mic-device';
 import { useAuth } from '@/cloud/auth';
 import { isCloudConfigured } from '@/cloud/supabase';
@@ -39,6 +40,7 @@ type Busy = 'calibration' | 'sessions' | 'export' | 'import' | null;
 export function Settings() {
   const { t } = useI18n();
   const install = usePwaInstall();
+  const [devMode, setDevMode] = useDevMode();
   const { user, profile, updateProfile, signOut } = useAuth();
   const [accountBusy, setAccountBusy] = useState<'wipe' | 'delete' | 'anon' | null>(null);
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -499,6 +501,30 @@ export function Settings() {
           </Card>
         </Section>
       )}
+
+      <Section title={t('settings.developer_section')}>
+        <Card>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">{t('settings.dev_mode_label')}</span>
+            <span className="text-xs text-text-dim leading-relaxed max-w-md">
+              {t('settings.dev_mode_body')}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDevMode(!devMode)}
+            role="switch"
+            aria-checked={devMode}
+            className={`shrink-0 inline-flex items-center px-4 py-1.5 rounded-full border text-sm transition ${
+              devMode
+                ? 'bg-accent text-bg border-accent'
+                : 'bg-bg-elev text-text-dim border-border hover:border-border-strong'
+            }`}
+          >
+            {devMode ? t('settings.dev_mode_on') : t('settings.dev_mode_off')}
+          </button>
+        </Card>
+      </Section>
     </main>
   );
 }
