@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { AudioInput } from '@/audio/AudioInput';
+import { AudioInput, type OnsetParamKey } from '@/audio/AudioInput';
 import { audioBus } from '@/audio/AudioBus';
 import {
   getActiveProfiles,
@@ -54,6 +54,64 @@ const SPECTRUM_MAX_HZ = 4000;
 const SPECTRUM_MIN_DB = -110;
 const SPECTRUM_MAX_DB = -20;
 
+// Tunable detection params. Defaults mirror the worklet so the UI
+// reads the same values the engine starts with — and the localStorage
+// hydrator can override these on mount, then push them into the
+// worklet right after AudioInput.start() resolves.
+const PARAM_DEFAULTS = {
+  absFloor: 0.01,
+  ratio: 2.2,
+  minGapSec: 0.08,
+  baselineTauSec: 0.5,
+} as const;
+type LabParams = { [K in OnsetParamKey]: number };
+const FFT_SIZE_OPTIONS = [512, 1024, 2048, 4096, 8192] as const;
+const DEFAULT_FFT_SIZE = 2048;
+const PARAMS_STORAGE_KEY = 'berimbau:lab-params';
+
+interface ParamSpec {
+  key: OnsetParamKey;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  fmt: (v: number) => string;
+}
+const PARAM_SPECS: ParamSpec[] = [
+  { key: 'absFloor',       label: 'ABS_FLOOR',     min: 0.001, max: 0.1, step: 0.001, fmt: (v) => v.toFixed(3) },
+  { key: 'ratio',          label: 'RATIO',         min: 1.2,   max: 5,   step: 0.1,   fmt: (v) => v.toFixed(2) },
+  { key: 'minGapSec',      label: 'MIN_GAP',       min: 0.03,  max: 0.5, step: 0.01,  fmt: (v) => `${(v * 1000).toFixed(0)} ms` },
+  { key: 'baselineTauSec', label: 'BASELINE_τ',    min: 0.1,   max: 2,   step: 0.05,  fmt: (v) => `${v.toFixed(2)} s` },
+];
+
+function readPersistedParams(): { params: LabParams; fftSize: number } {
+  try {
+    const raw = localStorage.getItem(PARAMS_STORAGE_KEY);
+    if (!raw) return { params: { ...PARAM_DEFAULTS }, fftSize: DEFAULT_FFT_SIZE };
+    const parsed = JSON.parse(raw) as Partial<LabParams> & { fftSize?: number };
+    const merged: LabParams = { ...PARAM_DEFAULTS };
+    for (const spec of PARAM_SPECS) {
+      const v = parsed[spec.key];
+      if (typeof v === 'number' && Number.isFinite(v)) merged[spec.key] = v;
+    }
+    const fft =
+      typeof parsed.fftSize === 'number' && (FFT_SIZE_OPTIONS as readonly number[]).includes(parsed.fftSize)
+        ? parsed.fftSize
+        : DEFAULT_FFT_SIZE;
+    return { params: merged, fftSize: fft };
+  } catch {
+    return { params: { ...PARAM_DEFAULTS }, fftSize: DEFAULT_FFT_SIZE };
+  }
+}
+
+function persistParams(params: LabParams, fftSize: number): void {
+  try {
+    localStorage.setItem(PARAMS_STORAGE_KEY, JSON.stringify({ ...params, fftSize }));
+  } catch {
+    // ignore — storage may be disabled.
+  }
+}
+
 export function Lab() {
   const inputRef = useRef<AudioInput | null>(null);
   const [sessionStart, setSessionStart] = useState(0);
@@ -69,6 +127,32 @@ export function Lab() {
   // Bumped each time the live profile changes so the capture closure
   // sees the new one without resubscribing the audio bus.
   const profileVersionRef = useRef(0);
+  const [{ params, fftSize }, setPersisted] = useState(readPersistedParams);
+  // Persist + reflect into the live engine whenever the user changes
+  // a parameter. Sliders call setParam, the effect handles both.
+  const setParam = (key: OnsetParamKey, value: number) => {
+    setPersisted((prev) => {
+      const next = { params: { ...prev.params, [key]: value }, fftSize: prev.fftSize };
+      persistParams(next.params, next.fftSize);
+      return next;
+    });
+    inputRef.current?.setOnsetParam(key, value);
+  };
+  const setFftSize = (size: number) => {
+    setPersisted((prev) => {
+      const next = { params: prev.params, fftSize: size };
+      persistParams(next.params, next.fftSize);
+      return next;
+    });
+    inputRef.current?.setFftSize(size);
+  };
+  const resetParams = () => {
+    const fresh = { params: { ...PARAM_DEFAULTS } as LabParams, fftSize: DEFAULT_FFT_SIZE };
+    setPersisted(fresh);
+    persistParams(fresh.params, fresh.fftSize);
+    inputRef.current?.resetOnsetParams();
+    inputRef.current?.setFftSize(DEFAULT_FFT_SIZE);
+  };
 
   // Subscribe to raw captures while running.
   useEffect(() => {
@@ -129,6 +213,12 @@ export function Lab() {
       const input = new AudioInput();
       await input.start();
       inputRef.current = input;
+      // Push the persisted params into the freshly-booted worklet so
+      // user-tuned values survive a stop/start cycle without a reload.
+      for (const spec of PARAM_SPECS) {
+        input.setOnsetParam(spec.key, params[spec.key]);
+      }
+      input.setFftSize(fftSize);
       setSessionStart(performance.now());
       setPhase({ kind: 'running' });
     } catch (err) {
@@ -277,6 +367,13 @@ export function Lab() {
           <SelectedStrikePanel
             strike={strikes[0] ?? null}
             onPlay={onPlay}
+          />
+          <ParametersPanel
+            params={params}
+            fftSize={fftSize}
+            onParam={setParam}
+            onFftSize={setFftSize}
+            onReset={resetParams}
           />
         </div>
         <StrikeTable
@@ -646,6 +743,111 @@ function SelectedStrikePanel({
         )}
         <path d={path} stroke="#64f08c" strokeWidth={1} fill="none" />
       </svg>
+    </div>
+  );
+}
+
+// ─── Parameters panel ────────────────────────────────────────────────
+
+function ParametersPanel({
+  params,
+  fftSize,
+  onParam,
+  onFftSize,
+  onReset,
+}: {
+  params: LabParams;
+  fftSize: number;
+  onParam: (key: OnsetParamKey, value: number) => void;
+  onFftSize: (size: number) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="card flex flex-col gap-3 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          Detection parameters
+        </span>
+        <button
+          type="button"
+          onClick={onReset}
+          className="btn-ghost px-2 py-0.5 text-[10px]"
+          title="Restore worklet defaults and clear the saved tuning"
+        >
+          Reset to defaults
+        </button>
+      </div>
+
+      {PARAM_SPECS.map((spec) => (
+        <ParamSlider
+          key={spec.key}
+          spec={spec}
+          value={params[spec.key]}
+          onChange={(v) => onParam(spec.key, v)}
+        />
+      ))}
+
+      <div className="flex items-center gap-2 pt-1">
+        <span className="text-[10px] font-mono text-text-dim w-24 shrink-0">
+          FFT_SIZE
+        </span>
+        <div className="flex gap-1 flex-wrap">
+          {FFT_SIZE_OPTIONS.map((opt) => {
+            const active = fftSize === opt;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => onFftSize(opt)}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition ${
+                  active
+                    ? 'bg-accent text-bg'
+                    : 'text-text-dim hover:text-text border border-border hover:border-border-strong'
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="text-[10px] text-text-dim leading-relaxed pt-1">
+        Tuning is persisted to localStorage; pushed into the worklet at every Start. Reset clears both.
+      </p>
+    </div>
+  );
+}
+
+function ParamSlider({
+  spec,
+  value,
+  onChange,
+}: {
+  spec: ParamSpec;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="text-[10px] font-mono text-text-dim w-24 shrink-0"
+        title={`${spec.min} – ${spec.max}`}
+      >
+        {spec.label}
+      </span>
+      <input
+        type="range"
+        min={spec.min}
+        max={spec.max}
+        step={spec.step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="flex-1 accent-accent"
+      />
+      <span className="text-[10px] font-mono text-text tabular-nums w-16 text-right">
+        {spec.fmt(value)}
+      </span>
     </div>
   );
 }

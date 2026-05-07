@@ -21,6 +21,11 @@
  * that break inside the AudioWorklet's restricted global scope.
  */
 
+// Default values for the tunable detection parameters. The worklet
+// initialises its instance fields from these and accepts live updates
+// via port messages of the shape { type: 'setParam', key, value }
+// or { type: 'reset' } to restore the defaults. The Lab dev surface is
+// the only consumer today.
 const MIN_GAP_SEC = 0.08;
 const ABS_FLOOR = 0.01;
 const RATIO = 2.2;
@@ -54,10 +59,42 @@ class OnsetProcessor extends AudioWorkletProcessor {
     this.filled = 0;
     this.baseline = 0;
     this.lastOnsetT = -Infinity;
-    const blockDt = 128 / sampleRate;
-    this.emaAlpha = 1 - Math.exp(-blockDt / BASELINE_TAU_SEC);
     /** @type {Array<{kind:'quick'|'full', onsetTime:number, sampleCount:number, samplesNeeded:number, rms:number, baseline:number}>} */
     this.pending = [];
+
+    // Tunable params — initialised from the module defaults, override
+    // via port messages from the main thread (Lab dev surface).
+    this.minGapSec = MIN_GAP_SEC;
+    this.absFloor = ABS_FLOOR;
+    this.ratio = RATIO;
+    this.baselineTauSec = BASELINE_TAU_SEC;
+    this.recomputeAlpha();
+
+    this.port.onmessage = (e) => {
+      const msg = e.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'setParam') {
+        const v = +msg.value;
+        if (!Number.isFinite(v)) return;
+        switch (msg.key) {
+          case 'minGapSec':       this.minGapSec = v; break;
+          case 'absFloor':        this.absFloor = v; break;
+          case 'ratio':           this.ratio = v; break;
+          case 'baselineTauSec':  this.baselineTauSec = v; this.recomputeAlpha(); break;
+        }
+      } else if (msg.type === 'reset') {
+        this.minGapSec = MIN_GAP_SEC;
+        this.absFloor = ABS_FLOOR;
+        this.ratio = RATIO;
+        this.baselineTauSec = BASELINE_TAU_SEC;
+        this.recomputeAlpha();
+      }
+    };
+  }
+
+  recomputeAlpha() {
+    const blockDt = 128 / sampleRate;
+    this.emaAlpha = 1 - Math.exp(-blockDt / this.baselineTauSec);
   }
 
   process(inputs) {
@@ -98,9 +135,9 @@ class OnsetProcessor extends AudioWorkletProcessor {
     else this.baseline += this.emaAlpha * (blockRms - this.baseline);
 
     // Onset detection.
-    if (blockRms < ABS_FLOOR) return true;
-    if (blockRms < this.baseline * RATIO) return true;
-    if (currentTime - this.lastOnsetT < MIN_GAP_SEC) return true;
+    if (blockRms < this.absFloor) return true;
+    if (blockRms < this.baseline * this.ratio) return true;
+    if (currentTime - this.lastOnsetT < this.minGapSec) return true;
     if (this.pending.length >= MAX_PENDING * 2) return true; // safety valve
 
     this.lastOnsetT = currentTime;

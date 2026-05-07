@@ -50,6 +50,8 @@ interface OnsetMessage {
 
 const BLEED_GAP_SEC = 0.06;
 
+export type OnsetParamKey = 'minGapSec' | 'absFloor' | 'ratio' | 'baselineTauSec';
+
 export interface AudioInputOptions {
   /** Override the calibration profiles fed to the classifier. */
   profiles?: Profiles;
@@ -263,6 +265,34 @@ export class AudioInput {
   /** Current FFT size on the analyser node. */
   getFftSize(): number {
     return this.analyser?.fftSize ?? 0;
+  }
+
+  /**
+   * Resize the analyser's FFT window. Valid sizes are powers of two
+   * 32–32768; the browser throws on anything else. Buffers are re-
+   * allocated to match. No-op when the analyser isn't running.
+   */
+  setFftSize(size: number): void {
+    if (!this.analyser) return;
+    this.analyser.fftSize = size;
+    this.analyserBuf = new Float32Array(this.analyser.fftSize);
+    this.spectrumBuf = new Float32Array(this.analyser.frequencyBinCount);
+  }
+
+  /**
+   * Update one of the worklet's onset-detection parameters. The
+   * worklet's port handler validates the key and ignores anything it
+   * doesn't recognise, so an unknown key is a silent no-op.
+   *
+   * Supported keys: 'minGapSec' | 'absFloor' | 'ratio' | 'baselineTauSec'.
+   */
+  setOnsetParam(key: OnsetParamKey, value: number): void {
+    this.workletNode?.port.postMessage({ type: 'setParam', key, value });
+  }
+
+  /** Reset every tunable onset param back to its module default. */
+  resetOnsetParams(): void {
+    this.workletNode?.port.postMessage({ type: 'reset' });
   }
 
   /** Seconds since the AudioContext was created. Shared clock for scoring. */
