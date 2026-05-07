@@ -92,6 +92,11 @@ const SECTIONS: Section[] = [
         body: 'Pandeiro, atabaque, agogô, reco-reco. Berimbaus are rare; the bateria as a whole isn\'t. Eventual goal: train any role.',
       },
       {
+        title: 'Freestyle session',
+        status: 'idea',
+        body: 'Open-ended practice where the app just listens, identifies what you\'re playing, and shows post-session stats — total time, toques recognised, what you spent the most time on. No score, no target pattern. The "warm up + see what stuck" mode.',
+      },
+      {
         title: 'Latency calibration',
         status: 'idea',
         body: 'A short clap-along to the metronome would let us measure the average detection-vs-expected offset and shift every later onset back by that amount, removing the user\'s system-specific lag from scoring.',

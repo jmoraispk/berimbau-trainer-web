@@ -163,6 +163,16 @@ relevant dashboard's secret store, never through chat.
 - **Email confirmation**: currently OFF in Supabase auth settings
   for testing convenience. **Flip back ON before production launch.**
 
+## Developer surface
+
+- `/lab` — unlinked dev-mode page for tuning calibration. Continuous
+  capture (no cycle-window gating), per-strike feature table (RMS,
+  peak, f0, centroid, length, classification), live spectrum (0–4 kHz),
+  and an in-memory experimental profile built from tagged strikes.
+  Reach via the URL bar; not linked from user-facing nav. Phases 2–3
+  (tunable worklet thresholds, swappable classifier backends) are
+  queued behind it.
+
 ## When stuck
 
 - Schema changes: write a new file in `supabase/migrations/`. CI

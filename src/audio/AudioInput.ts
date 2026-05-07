@@ -61,6 +61,7 @@ export class AudioInput {
   private workletNode: AudioWorkletNode | null = null;
   private analyser: AnalyserNode | null = null;
   private analyserBuf: Float32Array<ArrayBuffer> | null = null;
+  private spectrumBuf: Float32Array<ArrayBuffer> | null = null;
   private lastOnsetAt = -Infinity;
   private profiles: Profiles | undefined;
   private onVisibility = () => this.handleVisibility();
@@ -160,8 +161,9 @@ export class AudioInput {
     // Parallel analyser used by Calibrate's level meter. Cheap; doesn't
     // route audio anywhere, just exposes a recent-time-domain view.
     this.analyser = this.context.createAnalyser();
-    this.analyser.fftSize = 1024;
+    this.analyser.fftSize = 2048;
     this.analyserBuf = new Float32Array(this.analyser.fftSize);
+    this.spectrumBuf = new Float32Array(this.analyser.frequencyBinCount);
     source.connect(this.analyser);
 
     if (this.context.state === 'suspended') await this.context.resume();
@@ -212,6 +214,7 @@ export class AudioInput {
     this.analyser?.disconnect();
     this.analyser = null;
     this.analyserBuf = null;
+    this.spectrumBuf = null;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     if (this.context) {
@@ -239,6 +242,27 @@ export class AudioInput {
 
   setProfiles(profiles: Profiles | undefined): void {
     this.profiles = profiles;
+  }
+
+  /**
+   * Snapshot the analyser's frequency-domain bins (dBFS per bin). Returns
+   * null when the analyser isn't attached. Used by the /lab dev surface
+   * to render a live spectrum at ~30 fps.
+   */
+  getSpectrum(): Float32Array | null {
+    if (!this.analyser || !this.spectrumBuf) return null;
+    this.analyser.getFloatFrequencyData(this.spectrumBuf);
+    return this.spectrumBuf;
+  }
+
+  /** Sample rate the AudioContext is running at. Worklet shares this. */
+  getSampleRate(): number {
+    return this.context?.sampleRate ?? 0;
+  }
+
+  /** Current FFT size on the analyser node. */
+  getFftSize(): number {
+    return this.analyser?.fftSize ?? 0;
   }
 
   /** Seconds since the AudioContext was created. Shared clock for scoring. */

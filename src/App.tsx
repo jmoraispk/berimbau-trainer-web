@@ -16,6 +16,7 @@ import { Profile } from './routes/Profile';
 import { Privacy } from './routes/Privacy';
 import { Terms } from './routes/Terms';
 import { Subscribe } from './routes/Subscribe';
+import { Lab } from './routes/Lab';
 
 // Songs routes are code-split — the 185-song catalog is ~150 KB, no reason
 // to ship it in the initial bundle when only a subset of users open it.
@@ -50,6 +51,7 @@ export function App() {
       <Route path="/privacy" component={Privacy} />
       <Route path="/terms" component={Terms} />
       <Route path="/subscribe" component={Subscribe} />
+      <Route path="/lab" component={Lab} />
       <Route path="/songs">
         <Suspense fallback={SongsFallback}>
           <Songs />
