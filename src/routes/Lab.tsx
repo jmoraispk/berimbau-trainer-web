@@ -76,13 +76,45 @@ interface ParamSpec {
   max: number;
   step: number;
   fmt: (v: number) => string;
+  help: string;
 }
 const PARAM_SPECS: ParamSpec[] = [
-  { key: 'absFloor',       label: 'ABS_FLOOR',     min: 0.001, max: 0.1, step: 0.001, fmt: (v) => v.toFixed(3) },
-  { key: 'ratio',          label: 'RATIO',         min: 1.2,   max: 5,   step: 0.1,   fmt: (v) => v.toFixed(2) },
-  { key: 'minGapSec',      label: 'MIN_GAP',       min: 0.03,  max: 0.5, step: 0.01,  fmt: (v) => `${(v * 1000).toFixed(0)} ms` },
-  { key: 'baselineTauSec', label: 'BASELINE_τ',    min: 0.1,   max: 2,   step: 0.05,  fmt: (v) => `${v.toFixed(2)} s` },
+  {
+    key: 'absFloor',
+    label: 'ABS_FLOOR',
+    min: 0.001, max: 0.1, step: 0.001,
+    fmt: (v) => v.toFixed(3),
+    help:
+      'Minimum block RMS for a sound to count as an onset. Lower = more sensitive (catches quiet strikes, but also clicks and breathing). Higher = needs a louder strike. Default 0.010.',
+  },
+  {
+    key: 'ratio',
+    label: 'RATIO',
+    min: 1.2, max: 5, step: 0.1,
+    fmt: (v) => v.toFixed(2),
+    help:
+      'How much louder than the rolling baseline a sound must be. 2.2 means "≥ 2.2× the recent noise level". Lower = more sensitive in quiet rooms. Higher = needs a sharp transient that clearly stands out.',
+  },
+  {
+    key: 'minGapSec',
+    label: 'MIN_GAP',
+    min: 0.03, max: 0.5, step: 0.01,
+    fmt: (v) => `${(v * 1000).toFixed(0)} ms`,
+    help:
+      'Refractory period — the shortest time between two accepted onsets. 80 ms is fine for fast tch-tch in regional toques. Increase if a single strike\'s gourd resonance is firing a phantom second hit.',
+  },
+  {
+    key: 'baselineTauSec',
+    label: 'BASELINE_τ',
+    min: 0.1, max: 2, step: 0.05,
+    fmt: (v) => `${v.toFixed(2)} s`,
+    help:
+      'How quickly the rolling baseline (estimate of the room\'s noise floor) adapts. Smaller = adapts fast (good for changing rooms, but may track sustained sounds and miss them). Larger = stable baseline, slower to recover from loud sustained noise.',
+  },
 ];
+
+const FFT_HELP =
+  'AnalyserNode FFT window for the live spectrum panel above. Does not affect onset detection — that\'s done block-by-block in the worklet. Larger = finer frequency resolution but slower to update. 2048 ≈ 47 Hz/bin at 48 kHz.';
 
 function readPersistedParams(): { params: LabParams; fftSize: number } {
   try {
@@ -762,6 +794,8 @@ function ParametersPanel({
   onFftSize: (size: number) => void;
   onReset: () => void;
 }) {
+  const [openHelp, setOpenHelp] = useState<string | null>(null);
+  const toggleHelp = (id: string) => setOpenHelp((prev) => (prev === id ? null : id));
   return (
     <div className="card flex flex-col gap-3 px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
@@ -784,32 +818,42 @@ function ParametersPanel({
           spec={spec}
           value={params[spec.key]}
           onChange={(v) => onParam(spec.key, v)}
+          helpOpen={openHelp === spec.key}
+          onToggleHelp={() => toggleHelp(spec.key)}
         />
       ))}
 
-      <div className="flex items-center gap-2 pt-1">
-        <span className="text-[10px] font-mono text-text-dim w-24 shrink-0">
-          FFT_SIZE
-        </span>
-        <div className="flex gap-1 flex-wrap">
-          {FFT_SIZE_OPTIONS.map((opt) => {
-            const active = fftSize === opt;
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => onFftSize(opt)}
-                className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition ${
-                  active
-                    ? 'bg-accent text-bg'
-                    : 'text-text-dim hover:text-text border border-border hover:border-border-strong'
-                }`}
-              >
-                {opt}
-              </button>
-            );
-          })}
+      <div className="flex flex-col gap-1 pt-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono text-text-dim w-24 shrink-0">
+            FFT_SIZE
+          </span>
+          <InfoButton
+            open={openHelp === 'fft'}
+            onClick={() => toggleHelp('fft')}
+            label="What FFT_SIZE does"
+          />
+          <div className="flex gap-1 flex-wrap">
+            {FFT_SIZE_OPTIONS.map((opt) => {
+              const active = fftSize === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => onFftSize(opt)}
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition ${
+                    active
+                      ? 'bg-accent text-bg'
+                      : 'text-text-dim hover:text-text border border-border hover:border-border-strong'
+                  }`}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        {openHelp === 'fft' && <HelpRow text={FFT_HELP} />}
       </div>
 
       <p className="text-[10px] text-text-dim leading-relaxed pt-1">
@@ -823,32 +867,75 @@ function ParamSlider({
   spec,
   value,
   onChange,
+  helpOpen,
+  onToggleHelp,
 }: {
   spec: ParamSpec;
   value: number;
   onChange: (v: number) => void;
+  helpOpen: boolean;
+  onToggleHelp: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span
-        className="text-[10px] font-mono text-text-dim w-24 shrink-0"
-        title={`${spec.min} – ${spec.max}`}
-      >
-        {spec.label}
-      </span>
-      <input
-        type="range"
-        min={spec.min}
-        max={spec.max}
-        step={spec.step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="flex-1 accent-accent"
-      />
-      <span className="text-[10px] font-mono text-text tabular-nums w-16 text-right">
-        {spec.fmt(value)}
-      </span>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span
+          className="text-[10px] font-mono text-text-dim w-24 shrink-0"
+          title={`${spec.min} – ${spec.max}`}
+        >
+          {spec.label}
+        </span>
+        <InfoButton open={helpOpen} onClick={onToggleHelp} label={`What ${spec.label} does`} />
+        <input
+          type="range"
+          min={spec.min}
+          max={spec.max}
+          step={spec.step}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="flex-1 accent-accent"
+        />
+        <span className="text-[10px] font-mono text-text tabular-nums w-16 text-right">
+          {spec.fmt(value)}
+        </span>
+      </div>
+      {helpOpen && <HelpRow text={spec.help} />}
     </div>
+  );
+}
+
+function InfoButton({
+  open,
+  onClick,
+  label,
+}: {
+  open: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-expanded={open}
+      title={label}
+      className={`shrink-0 w-4 h-4 rounded-full border text-[9px] font-mono leading-none flex items-center justify-center transition ${
+        open
+          ? 'border-accent text-accent bg-accent/10'
+          : 'border-border text-text-dim hover:text-text hover:border-border-strong'
+      }`}
+    >
+      i
+    </button>
+  );
+}
+
+function HelpRow({ text }: { text: string }) {
+  return (
+    <p className="ml-26 pl-0 text-[10px] text-text-dim leading-relaxed bg-bg-elev/50 border border-border/40 rounded-md px-2 py-1.5">
+      {text}
+    </p>
   );
 }
 
