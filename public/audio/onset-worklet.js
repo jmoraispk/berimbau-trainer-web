@@ -80,6 +80,14 @@ class OnsetProcessor extends AudioWorkletProcessor {
      * when no candidate is pending (the common case once minSustainSec=0).
      */
     this.pendingOnset = null;
+
+    // Raw recording (Lab). Independent of onset detection; just
+    // accumulates input samples until target reached, then ships.
+    /** @type {Float32Array[] | null} */
+    this.recordChunks = null;
+    this.recordCollected = 0;
+    this.recordTarget = 0;
+
     this.recomputeAlpha();
 
     this.port.onmessage = (e) => {
@@ -102,8 +110,33 @@ class OnsetProcessor extends AudioWorkletProcessor {
         this.baselineTauSec = BASELINE_TAU_SEC;
         this.minSustainSec = MIN_SUSTAIN_SEC;
         this.recomputeAlpha();
+      } else if (msg.type === 'startRecord') {
+        const target = +msg.samples;
+        if (Number.isFinite(target) && target > 0) {
+          this.recordChunks = [];
+          this.recordCollected = 0;
+          this.recordTarget = Math.floor(target);
+        }
+      } else if (msg.type === 'stopRecord') {
+        if (this.recordChunks) this.flushRecording();
       }
     };
+  }
+
+  flushRecording() {
+    const total = new Float32Array(this.recordCollected);
+    let off = 0;
+    for (const c of this.recordChunks) {
+      total.set(c, off);
+      off += c.length;
+    }
+    this.port.postMessage(
+      { type: 'clip', samples: total, sampleRate },
+      [total.buffer],
+    );
+    this.recordChunks = null;
+    this.recordCollected = 0;
+    this.recordTarget = 0;
   }
 
   recomputeAlpha() {
@@ -124,6 +157,22 @@ class OnsetProcessor extends AudioWorkletProcessor {
       this.write = (this.write + 1) % ringSize;
     }
     this.filled = Math.min(this.filled + channel.length, ringSize);
+
+    // Raw recording — append input to the clip buffer until the
+    // target is reached. Independent of onset detection; recordings
+    // capture exactly what the worklet sees on its input.
+    if (this.recordChunks) {
+      const remaining = this.recordTarget - this.recordCollected;
+      if (remaining > 0) {
+        const take = Math.min(channel.length, remaining);
+        const slice = take === channel.length ? channel.slice() : channel.slice(0, take);
+        this.recordChunks.push(slice);
+        this.recordCollected += take;
+      }
+      if (this.recordCollected >= this.recordTarget) {
+        this.flushRecording();
+      }
+    }
 
     // Tick every pending capture; ship and remove ones whose post-onset
     // window has elapsed.

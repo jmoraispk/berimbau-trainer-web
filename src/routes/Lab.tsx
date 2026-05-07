@@ -127,6 +127,27 @@ const PARAM_SPECS: ParamSpec[] = [
 const FFT_HELP =
   'AnalyserNode FFT window for the live spectrum panel above. Visualization only — onset detection runs block-by-block in the worklet and does not look at this. Larger = finer frequency resolution but a slower update. 2048 ≈ 47 Hz/bin at 48 kHz.';
 
+// ─── Recordings (clips) ──────────────────────────────────────────────
+
+type LabTab = 'live' | 'record';
+const SLOT_IDS = ['ch', 'dong', 'ding', 'song'] as const;
+type SlotId = typeof SLOT_IDS[number];
+const SLOT_LABEL: Record<SlotId, string> = {
+  ch: 'TCH',
+  dong: 'DONG',
+  ding: 'DING',
+  song: 'Song',
+};
+const CLIP_LENGTH_OPTIONS = [5, 8, 10, 15] as const;
+const DEFAULT_CLIP_LENGTH_SEC = 8;
+
+interface Clip {
+  samples: Float32Array;
+  sampleRate: number;
+  durationSec: number;
+  recordedAt: number;
+}
+
 function readPersistedParams(): { params: LabParams; fftSize: number } {
   try {
     const raw = localStorage.getItem(PARAMS_STORAGE_KEY);
@@ -160,6 +181,12 @@ export function Lab() {
   // Separate AudioContext for clicking through captures — survives a
   // Stop click on the mic. Lazy-created on first play.
   const playbackCtxRef = useRef<AudioContext | null>(null);
+  const [tab, setTab] = useState<LabTab>('live');
+  const [clips, setClips] = useState<Partial<Record<SlotId, Clip>>>({});
+  const [recordingSlot, setRecordingSlot] = useState<SlotId | null>(null);
+  const [recordingStartedAt, setRecordingStartedAt] = useState(0);
+  const [playingSlot, setPlayingSlot] = useState<SlotId | null>(null);
+  const [clipLengthSec, setClipLengthSec] = useState<number>(DEFAULT_CLIP_LENGTH_SEC);
   const [sessionStart, setSessionStart] = useState(0);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [strikes, setStrikes] = useState<LabStrike[]>([]);
@@ -290,8 +317,16 @@ export function Lab() {
     };
   }, []);
 
-  const onStart = async () => {
-    if (phase.kind === 'running' || phase.kind === 'starting') return;
+  /**
+   * Idempotent mic starter — used by both the Live "Start" button and
+   * the Recordings tab, where clicking Record on an empty slot should
+   * just kick off the mic if it isn't already running. Returns the
+   * live AudioInput on success, null on failure or while another
+   * start is in flight.
+   */
+  const ensureMicRunning = async (): Promise<AudioInput | null> => {
+    if (inputRef.current?.isRunning) return inputRef.current;
+    if (phase.kind === 'starting') return null;
     setPhase({ kind: 'starting' });
     try {
       const input = new AudioInput();
@@ -305,10 +340,14 @@ export function Lab() {
       input.setFftSize(fftSize);
       setSessionStart(performance.now());
       setPhase({ kind: 'running' });
+      return input;
     } catch (err) {
       setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
+      return null;
     }
   };
+
+  const onStart = () => void ensureMicRunning();
 
   const onStop = async () => {
     await inputRef.current?.stop();
@@ -357,6 +396,52 @@ export function Lab() {
 
   const onDelete = (timestamp: number) =>
     setStrikes((prev) => prev.filter((s) => s.timestamp !== timestamp));
+
+  const onRecordClip = async (slot: SlotId) => {
+    const input = await ensureMicRunning();
+    if (!input) return;
+    setRecordingSlot(slot);
+    setRecordingStartedAt(performance.now());
+    try {
+      const { samples, sampleRate } = await input.recordClip(clipLengthSec);
+      setClips((prev) => ({
+        ...prev,
+        [slot]: {
+          samples,
+          sampleRate,
+          durationSec: clipLengthSec,
+          recordedAt: Date.now(),
+        },
+      }));
+    } catch (err) {
+      console.warn('[lab] recordClip failed', err);
+    } finally {
+      setRecordingSlot(null);
+    }
+  };
+
+  const onPlayClip = async (slot: SlotId) => {
+    const clip = clips[slot];
+    if (!clip) return;
+    const input = await ensureMicRunning();
+    if (!input) return;
+    setPlayingSlot(slot);
+    try {
+      await input.playClip(clip.samples, clip.sampleRate);
+    } catch (err) {
+      console.warn('[lab] playClip failed', err);
+    } finally {
+      setPlayingSlot(null);
+    }
+  };
+
+  const onClearClip = (slot: SlotId) => {
+    setClips((prev) => {
+      const next = { ...prev };
+      delete next[slot];
+      return next;
+    });
+  };
 
   // Mapping for the (centroid, f0) scatter at the bottom of the page.
   // Tag wins over classification — when the user has labelled a strike
@@ -462,6 +547,10 @@ export function Lab() {
         </Link>
       </header>
 
+      <div className="flex justify-end">
+        <TabBar value={tab} onChange={setTab} />
+      </div>
+
       <Toolbar
         phase={phase}
         onStart={() => void onStart()}
@@ -482,18 +571,34 @@ export function Lab() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.4fr] items-start">
         <div className="flex flex-col gap-3">
-          <LevelStrip
-            getLevel={() => inputRef.current?.getLevel() ?? 0}
-            running={phase.kind === 'running'}
-            params={params}
-          />
-          <SpectrumPanel
-            getSpectrum={() => inputRef.current?.getSpectrum() ?? null}
-            getSampleRate={() => inputRef.current?.getSampleRate() ?? 0}
-            getFftSize={() => inputRef.current?.getFftSize() ?? 0}
-            getLevel={() => inputRef.current?.getLevel() ?? 0}
-            running={phase.kind === 'running'}
-          />
+          {tab === 'live' ? (
+            <>
+              <LevelStrip
+                getLevel={() => inputRef.current?.getLevel() ?? 0}
+                running={phase.kind === 'running'}
+                params={params}
+              />
+              <SpectrumPanel
+                getSpectrum={() => inputRef.current?.getSpectrum() ?? null}
+                getSampleRate={() => inputRef.current?.getSampleRate() ?? 0}
+                getFftSize={() => inputRef.current?.getFftSize() ?? 0}
+                getLevel={() => inputRef.current?.getLevel() ?? 0}
+                running={phase.kind === 'running'}
+              />
+            </>
+          ) : (
+            <RecordingsPanel
+              clips={clips}
+              clipLengthSec={clipLengthSec}
+              onClipLengthChange={setClipLengthSec}
+              recordingSlot={recordingSlot}
+              recordingStartedAt={recordingStartedAt}
+              playingSlot={playingSlot}
+              onRecord={(slot) => void onRecordClip(slot)}
+              onPlay={(slot) => void onPlayClip(slot)}
+              onClear={onClearClip}
+            />
+          )}
           <SelectedStrikePanel
             strike={strikes[0] ?? null}
             onPlay={onPlay}
@@ -531,6 +636,216 @@ export function Lab() {
         }}
       />
     </main>
+  );
+}
+
+// ─── Tab bar ─────────────────────────────────────────────────────────
+
+function TabBar({ value, onChange }: { value: LabTab; onChange: (t: LabTab) => void }) {
+  const opts: Array<{ id: LabTab; label: string }> = [
+    { id: 'live', label: 'Live' },
+    { id: 'record', label: 'Recordings' },
+  ];
+  return (
+    <div className="inline-flex gap-1 p-1 rounded-full bg-bg-elev/60 border border-border">
+      {opts.map((o) => {
+        const active = value === o.id;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onChange(o.id)}
+            className={`px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider transition ${
+              active
+                ? 'bg-accent text-bg'
+                : 'text-text-dim hover:text-text'
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Recordings panel ────────────────────────────────────────────────
+
+function RecordingsPanel({
+  clips,
+  clipLengthSec,
+  onClipLengthChange,
+  recordingSlot,
+  recordingStartedAt,
+  playingSlot,
+  onRecord,
+  onPlay,
+  onClear,
+}: {
+  clips: Partial<Record<SlotId, Clip>>;
+  clipLengthSec: number;
+  onClipLengthChange: (s: number) => void;
+  recordingSlot: SlotId | null;
+  recordingStartedAt: number;
+  playingSlot: SlotId | null;
+  onRecord: (slot: SlotId) => void;
+  onPlay: (slot: SlotId) => void;
+  onClear: (slot: SlotId) => void;
+}) {
+  return (
+    <div className="card flex flex-col gap-3 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          Recordings — replay through the pipeline
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono text-text-dim">clip length</span>
+          <div className="flex gap-1">
+            {CLIP_LENGTH_OPTIONS.map((opt) => {
+              const active = clipLengthSec === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => onClipLengthChange(opt)}
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition ${
+                    active
+                      ? 'bg-accent text-bg'
+                      : 'text-text-dim hover:text-text border border-border hover:border-border-strong'
+                  }`}
+                >
+                  {opt}s
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2">
+        {SLOT_IDS.map((id) => (
+          <ClipSlot
+            key={id}
+            id={id}
+            label={SLOT_LABEL[id]}
+            sound={id === 'song' ? null : id}
+            clip={clips[id] ?? null}
+            isRecording={recordingSlot === id}
+            recordingStartedAt={recordingStartedAt}
+            isPlaying={playingSlot === id}
+            recordDisabled={recordingSlot !== null && recordingSlot !== id}
+            playDisabled={playingSlot !== null && playingSlot !== id}
+            clipLengthSec={clipLengthSec}
+            onRecord={() => onRecord(id)}
+            onPlay={() => onPlay(id)}
+            onClear={() => onClear(id)}
+          />
+        ))}
+      </div>
+
+      <p className="text-[10px] text-text-dim leading-relaxed pt-1">
+        Record once, then replay through the worklet — every parameter change runs against the same input. Clips live in memory; a refresh wipes them.
+      </p>
+    </div>
+  );
+}
+
+function ClipSlot({
+  label,
+  sound,
+  clip,
+  isRecording,
+  recordingStartedAt,
+  isPlaying,
+  recordDisabled,
+  playDisabled,
+  clipLengthSec,
+  onRecord,
+  onPlay,
+  onClear,
+}: {
+  id: SlotId;
+  label: string;
+  sound: ClassifiableSound | null;
+  clip: Clip | null;
+  isRecording: boolean;
+  recordingStartedAt: number;
+  isPlaying: boolean;
+  recordDisabled: boolean;
+  playDisabled: boolean;
+  clipLengthSec: number;
+  onRecord: () => void;
+  onPlay: () => void;
+  onClear: () => void;
+}) {
+  // Tick the elapsed counter while recording so the user sees a live
+  // countdown. ~10 Hz is plenty for one decimal place.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    if (!isRecording) return;
+    const id = window.setInterval(() => setNow(performance.now()), 100);
+    return () => window.clearInterval(id);
+  }, [isRecording]);
+
+  const elapsed = isRecording ? (performance.now() - recordingStartedAt) / 1000 : 0;
+  const remaining = Math.max(0, clipLengthSec - elapsed);
+
+  const borderClass = isRecording
+    ? 'border-red-400/70'
+    : isPlaying
+      ? 'border-accent'
+      : 'border-border';
+
+  return (
+    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-elev/40 border ${borderClass} transition`}>
+      <div className="shrink-0 w-7 h-7 flex items-center justify-center">
+        {sound ? <SoundSymbol sound={sound} size={20} glow={false} /> : <span className="text-[10px] font-mono text-text-dim">♪</span>}
+      </div>
+      <div className="flex flex-col flex-1 min-w-0">
+        <span className="text-sm font-medium leading-none">{label}</span>
+        <span className="text-[10px] font-mono text-text-dim mt-0.5">
+          {isRecording
+            ? `recording · ${remaining.toFixed(1)}s left`
+            : clip
+              ? `${clip.durationSec.toFixed(1)}s · ${(clip.samples.length / 1024).toFixed(0)} KS`
+              : 'no clip'}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onRecord}
+        disabled={isRecording || recordDisabled || isPlaying}
+        className={`shrink-0 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider border transition disabled:opacity-40 disabled:cursor-not-allowed ${
+          isRecording
+            ? 'border-red-400 text-red-400 bg-red-400/10'
+            : 'border-border text-text-dim hover:text-text hover:border-border-strong'
+        }`}
+      >
+        ● {clip ? 'Re-record' : 'Record'}
+      </button>
+      <button
+        type="button"
+        onClick={onPlay}
+        disabled={!clip || isRecording || isPlaying || playDisabled}
+        className={`shrink-0 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider border transition disabled:opacity-40 disabled:cursor-not-allowed ${
+          isPlaying
+            ? 'border-accent text-accent bg-accent/10'
+            : 'border-border text-text-dim hover:text-text hover:border-border-strong'
+        }`}
+      >
+        {isPlaying ? '▷ Playing' : '▷ Play'}
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        disabled={!clip || isRecording || isPlaying}
+        title="Clear clip"
+        aria-label="Clear clip"
+        className="shrink-0 w-6 h-6 rounded text-text-dim/60 hover:text-red-400 hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center text-[12px] leading-none"
+      >
+        ×
+      </button>
+    </div>
   );
 }
 

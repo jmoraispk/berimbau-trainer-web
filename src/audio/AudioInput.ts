@@ -66,7 +66,11 @@ export class AudioInput {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private workletNode: AudioWorkletNode | null = null;
+  /** Mic source node — exposed as a field so playClip() can swap it
+   *  out for a BufferSource and put it back when playback ends. */
+  private micSource: MediaStreamAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
+  private clipResolver: ((clip: { samples: Float32Array; sampleRate: number }) => void) | null = null;
   private analyserBuf: Float32Array<ArrayBuffer> | null = null;
   private spectrumBuf: Float32Array<ArrayBuffer> | null = null;
   private lastOnsetAt = -Infinity;
@@ -143,12 +147,13 @@ export class AudioInput {
     await this.context.audioWorklet.addModule(workletUrl);
 
     const source = this.context.createMediaStreamSource(this.stream);
+    this.micSource = source;
     this.workletNode = new AudioWorkletNode(this.context, 'onset-processor');
-    this.workletNode.port.onmessage = (ev: MessageEvent<OnsetMessage>) => {
+    this.workletNode.port.onmessage = (ev: MessageEvent) => {
       const msg = ev.data;
-      if (msg.type === 'onsetQuick') {
+      if (msg?.type === 'onsetQuick') {
         this.handleOnset(msg);
-      } else if (msg.type === 'onsetFull' && audioBus.hasRawListeners()) {
+      } else if (msg?.type === 'onsetFull' && audioBus.hasRawListeners()) {
         // Only ship the full segment when something is listening — keeps
         // the per-frame transfer cost zero during ordinary practice.
         audioBus.pushRawCapture({
@@ -159,6 +164,10 @@ export class AudioInput {
           sampleRate: msg.sampleRate,
           rms: msg.rms,
         });
+      } else if (msg?.type === 'clip' && this.clipResolver) {
+        const cb = this.clipResolver;
+        this.clipResolver = null;
+        cb({ samples: msg.samples as Float32Array, sampleRate: msg.sampleRate as number });
       }
     };
     source.connect(this.workletNode);
@@ -218,6 +227,9 @@ export class AudioInput {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.workletNode?.disconnect();
     this.workletNode = null;
+    this.micSource?.disconnect();
+    this.micSource = null;
+    this.clipResolver = null;
     this.analyser?.disconnect();
     this.analyser = null;
     this.analyserBuf = null;
@@ -298,6 +310,68 @@ export class AudioInput {
   /** Reset every tunable onset param back to its module default. */
   resetOnsetParams(): void {
     this.workletNode?.port.postMessage({ type: 'reset' });
+  }
+
+  /**
+   * Capture `durationSec` of raw mic audio via the worklet and resolve
+   * with the resulting Float32Array + sampleRate. The recording is
+   * exactly what the worklet sees on its input — no filtering, no
+   * onset gating. Concurrent recordings are not supported; the second
+   * call rejects until the first resolves or `cancelRecording()` runs.
+   */
+  recordClip(durationSec: number): Promise<{ samples: Float32Array; sampleRate: number }> {
+    if (!this.workletNode || !this.context) {
+      return Promise.reject(new Error('Mic not running'));
+    }
+    if (this.clipResolver) {
+      return Promise.reject(new Error('Already recording'));
+    }
+    const samples = Math.ceil(durationSec * this.context.sampleRate);
+    return new Promise((resolve) => {
+      this.clipResolver = resolve;
+      this.workletNode!.port.postMessage({ type: 'startRecord', samples });
+    });
+  }
+
+  /** Abort an in-flight recording without waiting for the duration. */
+  cancelRecording(): void {
+    if (!this.clipResolver) return;
+    this.workletNode?.port.postMessage({ type: 'stopRecord' });
+    this.clipResolver = null;
+  }
+
+  /**
+   * Play a recorded clip through the same onset pipeline the mic
+   * normally feeds. Disconnects the mic source from the worklet for
+   * the duration of the clip, then reconnects on `ended`. Captures
+   * fired by the playback flow into audioBus exactly as if the user
+   * had played the audio live.
+   */
+  playClip(samples: Float32Array, sampleRate: number): Promise<void> {
+    if (!this.context || !this.workletNode || !this.micSource) {
+      return Promise.reject(new Error('Mic not running'));
+    }
+    const ctx = this.context;
+    const worklet = this.workletNode;
+    const mic = this.micSource;
+    try {
+      mic.disconnect(worklet);
+    } catch {
+      // Already disconnected — fine, we'll still play.
+    }
+    const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+    buffer.getChannelData(0).set(samples);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(worklet);
+    return new Promise((resolve) => {
+      src.onended = () => {
+        try { src.disconnect(); } catch { /* fine */ }
+        try { mic.connect(worklet); } catch { /* fine */ }
+        resolve();
+      };
+      src.start();
+    });
   }
 
   /** Seconds since the AudioContext was created. Shared clock for scoring. */
