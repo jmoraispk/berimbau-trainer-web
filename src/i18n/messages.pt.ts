@@ -50,8 +50,8 @@ export const pt: Messages = {
   'home.view_all_stats': 'Ver tudo →',
   'home.browse_songs': 'Explorar {n} músicas',
   'home.browse_classes': 'Fazer uma aula',
-  'home.browse_roadmap': 'Roteiro',
-  'home.browse_changelog': 'Histórico',
+  'home.browse_roadmap': 'Roadmap',
+  'home.browse_changelog': 'Changelog',
   'home.browse_about': 'Sobre',
   'home.browse_leaderboard': 'Ranking',
   'home.browse_privacy': 'Privacidade',
@@ -216,7 +216,7 @@ export const pt: Messages = {
   'classes.vowels.part3': 'frente + ré',
 
   // ── roadmap ─────────────────────────────────────────────────────────
-  'roadmap.title': 'Roteiro',
+  'roadmap.title': 'Roadmap',
   'roadmap.subtitle': 'O que vem aí — e quando, mais ou menos.',
   'roadmap.request_intro': 'Tem uma ideia, ou quer apoiar um dos itens acima? Mande um e-mail para hi@berimbau.pro. O voto dentro do app chega com as contas de usuário.',
   'roadmap.request_button': 'Pedir uma funcionalidade',
@@ -233,7 +233,7 @@ export const pt: Messages = {
   'about.pricing': 'O app é local-first, bilíngue e gratuito para começar. Sincronização na nuvem, compartilhamento e ranking ficarão num plano pago quando as contas chegarem. Os ritmos em si continuam grátis para sempre.',
 
   // ── changelog ───────────────────────────────────────────────────────
-  'changelog.title': 'Histórico',
+  'changelog.title': 'Changelog',
   'changelog.subtitle': 'O que já foi lançado, e o que veio antes.',
   'home.footer': '{n} toques · v2 · web',
   'home.settings_aria': 'Configurações',
