@@ -50,7 +50,12 @@ interface OnsetMessage {
 
 const BLEED_GAP_SEC = 0.06;
 
-export type OnsetParamKey = 'minGapSec' | 'absFloor' | 'ratio' | 'baselineTauSec';
+export type OnsetParamKey =
+  | 'minGapSec'
+  | 'absFloor'
+  | 'ratio'
+  | 'baselineTauSec'
+  | 'minSustainSec';
 
 export interface AudioInputOptions {
   /** Override the calibration profiles fed to the classifier. */

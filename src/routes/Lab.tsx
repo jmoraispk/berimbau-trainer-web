@@ -12,6 +12,7 @@ import { computeProfiles, type CalibrationSample, type SavedCalibration } from '
 import { CalibrationScatter } from '@/components/CalibrationScatter';
 import type { ClassifiableSound } from '@/engine/profiles';
 import { SOUND_COLORS, SOUND_LABELS } from '@/engine/rhythms';
+import { SoundSymbol } from '@/components/SoundSymbol';
 
 /**
  * /lab — developer-mode prototyping surface.
@@ -64,6 +65,7 @@ const PARAM_DEFAULTS = {
   ratio: 2.2,
   minGapSec: 0.08,
   baselineTauSec: 0.5,
+  minSustainSec: 0,
 } as const;
 type LabParams = { [K in OnsetParamKey]: number };
 const FFT_SIZE_OPTIONS = [512, 1024, 2048, 4096, 8192] as const;
@@ -112,6 +114,14 @@ const PARAM_SPECS: ParamSpec[] = [
     help:
       'Time constant of the rolling baseline (EMA over recent block RMS). The baseline is the "noise floor estimate" RATIO compares against. Smaller τ = adapts fast (handy when noise level keeps changing), but may track a sustained strike and miss its end. Larger τ = stabler floor, slower to recover from loud sustained noise. 0.5 s is a reasonable balance.',
   },
+  {
+    key: 'minSustainSec',
+    label: 'MIN_SUSTAIN',
+    min: 0, max: 0.1, step: 0.005,
+    fmt: (v) => (v === 0 ? 'off' : `${(v * 1000).toFixed(0)} ms`),
+    help:
+      'Time the sound must stay above ABS_FLOOR after the threshold cross before the onset is confirmed. 0 = off (current behaviour). >0 rejects single-block clicks (mouse taps, knocks on the wood) without rejecting real strikes. 20–30 ms is a reasonable starting point.',
+  },
 ];
 
 const FFT_HELP =
@@ -147,6 +157,9 @@ function persistParams(params: LabParams, fftSize: number): void {
 
 export function Lab() {
   const inputRef = useRef<AudioInput | null>(null);
+  // Separate AudioContext for clicking through captures — survives a
+  // Stop click on the mic. Lazy-created on first play.
+  const playbackCtxRef = useRef<AudioContext | null>(null);
   const [sessionStart, setSessionStart] = useState(0);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [strikes, setStrikes] = useState<LabStrike[]>([]);
@@ -272,6 +285,8 @@ export function Lab() {
     return () => {
       void inputRef.current?.stop();
       inputRef.current = null;
+      void playbackCtxRef.current?.close();
+      playbackCtxRef.current = null;
     };
   }, []);
 
@@ -310,8 +325,21 @@ export function Lab() {
   };
 
   const onPlay = (s: LabStrike) => {
-    const ctx = inputRef.current?.audioContext;
-    if (!ctx) return;
+    if (s.segment.length === 0) return;
+    // Prefer the mic's context if it's still alive (no extra resource
+    // cost); fall back to a dedicated playback context that we keep
+    // open for the route's lifetime so playback works after Stop.
+    let ctx = inputRef.current?.audioContext ?? playbackCtxRef.current;
+    if (!ctx) {
+      try {
+        ctx = new AudioContext();
+        playbackCtxRef.current = ctx;
+      } catch (err) {
+        console.warn('[lab] could not create playback context', err);
+        return;
+      }
+    }
+    if (ctx.state === 'suspended') void ctx.resume();
     try {
       const buffer = ctx.createBuffer(1, s.segment.length, s.sampleRate);
       buffer.getChannelData(0).set(s.segment);
@@ -326,6 +354,9 @@ export function Lab() {
       console.warn('[lab] playback failed', err);
     }
   };
+
+  const onDelete = (timestamp: number) =>
+    setStrikes((prev) => prev.filter((s) => s.timestamp !== timestamp));
 
   // Mapping for the (centroid, f0) scatter at the bottom of the page.
   // Tag wins over classification — when the user has labelled a strike
@@ -451,6 +482,11 @@ export function Lab() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.4fr] items-start">
         <div className="flex flex-col gap-3">
+          <LevelStrip
+            getLevel={() => inputRef.current?.getLevel() ?? 0}
+            running={phase.kind === 'running'}
+            params={params}
+          />
           <SpectrumPanel
             getSpectrum={() => inputRef.current?.getSpectrum() ?? null}
             getSampleRate={() => inputRef.current?.getSampleRate() ?? 0}
@@ -478,6 +514,7 @@ export function Lab() {
           strikes={strikes}
           onPlay={onPlay}
           onTag={onTag}
+          onDelete={onDelete}
           sessionStart={sessionStart}
         />
       </div>
@@ -618,6 +655,189 @@ function Toolbar({
   );
 }
 
+// ─── Rolling level strip ─────────────────────────────────────────────
+
+const STRIP_WINDOW_SEC = 8;
+const STRIP_HZ = 30;
+const STRIP_MAX_RMS = 0.3; // y-axis ceiling — strikes typically peak 0.1–0.25.
+
+/**
+ * Last 8 seconds of block RMS as a thin scrolling line, with the
+ * matching BASELINE_τ EMA overlaid so the user can see what the
+ * RATIO test is comparing against, and horizontal threshold lines
+ * for ABS_FLOOR and RATIO × baseline so it's visible whether each
+ * strike would fire.
+ *
+ * Sampling is done from the existing AnalyserNode at STRIP_HZ to
+ * keep the visualization independent of the worklet — we don't have
+ * to round-trip every block to main.
+ */
+function LevelStrip({
+  getLevel,
+  running,
+  params,
+}: {
+  getLevel: () => number;
+  running: boolean;
+  params: LabParams;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Two parallel ring buffers — a single React re-render would be
+  // wasteful for 30 Hz; the rAF tick reads getLevel and writes here.
+  const rmsRef = useRef<number[]>([]);
+  const baselineRef = useRef<number[]>([]);
+  const baselineEmaRef = useRef(0);
+
+  // Reset the ring on stop so the next session doesn't paste fresh
+  // samples onto stale ones from before.
+  useEffect(() => {
+    if (!running) {
+      rmsRef.current = [];
+      baselineRef.current = [];
+      baselineEmaRef.current = 0;
+    }
+  }, [running]);
+
+  useEffect(() => {
+    if (!running) return;
+    let raf = 0;
+    let lastSample = 0;
+    const periodMs = 1000 / STRIP_HZ;
+    const cap = STRIP_WINDOW_SEC * STRIP_HZ;
+    const tick = (now: number) => {
+      if (now - lastSample >= periodMs) {
+        const rms = getLevel();
+        const dt = (now - lastSample) / 1000;
+        const alpha = 1 - Math.exp(-dt / params.baselineTauSec);
+        baselineEmaRef.current = baselineEmaRef.current * (1 - alpha) + rms * alpha;
+        rmsRef.current.push(rms);
+        baselineRef.current.push(baselineEmaRef.current);
+        if (rmsRef.current.length > cap) {
+          rmsRef.current.shift();
+          baselineRef.current.shift();
+        }
+        lastSample = now;
+      }
+      const canvas = canvasRef.current;
+      if (canvas) drawStrip(canvas, rmsRef.current, baselineRef.current, params);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [running, getLevel, params]);
+
+  return (
+    <div className="card flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          Level — last {STRIP_WINDOW_SEC}s
+        </span>
+        <span className="text-[10px] font-mono text-text-dim">
+          <span className="text-accent">━ rms</span>&nbsp;·&nbsp;
+          <span className="text-text-dim">━ baseline</span>&nbsp;·&nbsp;
+          <span className="text-emerald-400">┄ abs_floor</span>&nbsp;·&nbsp;
+          <span className="text-yellow-400">┄ ratio×base</span>
+        </span>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={640}
+        height={120}
+        className="w-full h-28 rounded-md bg-bg border border-border"
+      />
+      {!running && (
+        <p className="text-xs text-text-dim text-center">
+          Start the mic to see the level strip — strike spikes, baseline drift, and whether each gate would fire.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function drawStrip(
+  canvas: HTMLCanvasElement,
+  rms: readonly number[],
+  baseline: readonly number[],
+  params: LabParams,
+): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.fillStyle = '#0b0f1a';
+  ctx.fillRect(0, 0, w, h);
+
+  const cap = STRIP_WINDOW_SEC * STRIP_HZ;
+  const yFor = (v: number) => {
+    const norm = Math.max(0, Math.min(1, v / STRIP_MAX_RMS));
+    return h - 4 - norm * (h - 8);
+  };
+  const xFor = (i: number) => (i / Math.max(1, cap - 1)) * w;
+
+  // Time grid every second.
+  ctx.strokeStyle = '#1a2135';
+  ctx.lineWidth = 1;
+  for (let s = 1; s < STRIP_WINDOW_SEC; s++) {
+    const x = (s / STRIP_WINDOW_SEC) * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+
+  if (rms.length === 0) return;
+
+  // Right-align the data so 'now' is at the right edge — older samples
+  // scroll left as new ones arrive.
+  const offset = cap - rms.length;
+
+  // Threshold: ABS_FLOOR (constant horizontal line).
+  ctx.strokeStyle = '#10b981'; // emerald-500
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1;
+  const yFloor = yFor(params.absFloor);
+  ctx.beginPath();
+  ctx.moveTo(0, yFloor);
+  ctx.lineTo(w, yFloor);
+  ctx.stroke();
+
+  // Threshold: RATIO × baseline (varies with baseline → curve).
+  ctx.strokeStyle = '#facc15'; // yellow-400
+  ctx.beginPath();
+  for (let i = 0; i < baseline.length; i++) {
+    const x = xFor(offset + i);
+    const y = yFor(baseline[i]! * params.ratio);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Baseline line.
+  ctx.strokeStyle = '#5a6480';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < baseline.length; i++) {
+    const x = xFor(offset + i);
+    const y = yFor(baseline[i]!);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // RMS line — drawn on top so spikes pop.
+  ctx.strokeStyle = '#ff8a3d';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let i = 0; i < rms.length; i++) {
+    const x = xFor(offset + i);
+    const y = yFor(rms[i]!);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
 // ─── Spectrum + level meter ──────────────────────────────────────────
 
 function SpectrumPanel({
@@ -733,11 +953,13 @@ function StrikeTable({
   strikes,
   onPlay,
   onTag,
+  onDelete,
   sessionStart,
 }: {
   strikes: LabStrike[];
   onPlay: (s: LabStrike) => void;
   onTag: (timestamp: number, tag: ClassifiableSound | null) => void;
+  onDelete: (timestamp: number) => void;
   sessionStart: number;
 }) {
   return (
@@ -747,7 +969,7 @@ function StrikeTable({
           Strikes (newest first)
         </span>
         <span className="text-[10px] font-mono text-text-dim">
-          click row to play · tag to feed experimental profile
+          click row to play · tag · × to delete
         </span>
       </div>
       <div className="overflow-y-auto flex flex-col">
@@ -762,6 +984,7 @@ function StrikeTable({
             strike={s}
             onPlay={onPlay}
             onTag={onTag}
+            onDelete={onDelete}
             sessionStart={sessionStart}
           />
         ))}
@@ -774,38 +997,67 @@ function StrikeRow({
   strike,
   onPlay,
   onTag,
+  onDelete,
   sessionStart,
 }: {
   strike: LabStrike;
   onPlay: (s: LabStrike) => void;
   onTag: (timestamp: number, tag: ClassifiableSound | null) => void;
+  onDelete: (timestamp: number) => void;
   sessionStart: number;
 }) {
   const lengthMs = (strike.segLen / strike.sampleRate) * 1000;
   const tSec = (strike.arrivedAt - sessionStart) / 1000;
   const classified = strike.classified;
   const classColor = classified !== 'unknown' ? SOUND_COLORS[classified] : '#5a6480';
-  const classLabel = classified !== 'unknown' ? SOUND_LABELS[classified] : '?';
+  // The whole row is the play target — clicks on tag pills or the
+  // delete button stopPropagation so they don't double-fire.
   return (
-    <div className="grid grid-cols-[3rem_minmax(0,1fr)_5rem] gap-2 items-center px-2 py-1.5 border-b border-border/30 hover:bg-bg-elev/50 text-xs font-mono tabular-nums">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onPlay(strike)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onPlay(strike);
+        }
+      }}
+      className="grid grid-cols-[3rem_minmax(0,1fr)_5rem_1.25rem] gap-2 items-center px-2 py-1.5 border-b border-border/30 hover:bg-bg-elev/50 cursor-pointer text-xs font-mono tabular-nums focus:outline-none focus-visible:bg-bg-elev/70"
+      title="Click to play"
+    >
       <span className="text-text-dim">{tSec.toFixed(1)}s</span>
-      <button
-        type="button"
-        onClick={() => onPlay(strike)}
-        className="grid grid-cols-6 gap-2 items-baseline text-left hover:text-text"
-        title={`fft=${strike.segLen}, preSec=${strike.preSec.toFixed(3)}`}
-      >
-        <span style={{ color: classColor }} className="text-[11px]">
-          {classLabel}
-          <span className="text-text-dim/70 ml-1">{(strike.confidence * 100).toFixed(0)}%</span>
+      <div className="grid grid-cols-6 gap-2 items-baseline">
+        <span style={{ color: classColor }} className="flex items-center gap-1 text-[11px]">
+          {classified !== 'unknown' ? (
+            <SoundSymbol sound={classified} size={14} glow={false} />
+          ) : (
+            <span className="w-3.5 h-3.5 inline-flex items-center justify-center">·</span>
+          )}
+          <span className="text-text-dim/70">{(strike.confidence * 100).toFixed(0)}%</span>
         </span>
         <span title="RMS at onset"><span className="text-text-dim">rms </span>{strike.rms.toFixed(3)}</span>
         <span title="peak amplitude"><span className="text-text-dim">pk </span>{strike.peak.toFixed(2)}</span>
         <span title="fundamental"><span className="text-text-dim">f₀ </span>{strike.f0.toFixed(0)}</span>
         <span title="spectral centroid"><span className="text-text-dim">cent </span>{strike.centroid.toFixed(0)}</span>
         <span title="segment length"><span className="text-text-dim">len </span>{lengthMs.toFixed(0)}ms</span>
+      </div>
+      <TagPills
+        value={strike.tagged}
+        onChange={(t) => onTag(strike.timestamp, t)}
+      />
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(strike.timestamp);
+        }}
+        title="Delete strike"
+        aria-label="Delete strike"
+        className="w-5 h-5 rounded text-[11px] text-text-dim/60 hover:text-red-400 hover:bg-bg-elev transition flex items-center justify-center leading-none"
+      >
+        ×
       </button>
-      <TagPills value={strike.tagged} onChange={(t) => onTag(strike.timestamp, t)} />
     </div>
   );
 }
@@ -819,25 +1071,24 @@ function TagPills({
 }) {
   const opts: ClassifiableSound[] = ['ch', 'dong', 'ding'];
   return (
-    <div className="flex gap-0.5">
+    <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
       {opts.map((o) => {
         const active = value === o;
         return (
           <button
             key={o}
             type="button"
-            onClick={() => onChange(active ? null : o)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(active ? null : o);
+            }}
             title={`Tag as ${SOUND_LABELS[o]}`}
-            className={`w-6 h-6 rounded text-[10px] font-bold transition ${
-              active ? '' : 'bg-bg border border-border hover:border-border-strong text-text-dim'
+            className={`w-6 h-6 rounded border-2 bg-bg-elev transition flex items-center justify-center ${
+              active ? '' : 'border-border opacity-60 hover:opacity-100 hover:border-border-strong'
             }`}
-            style={
-              active
-                ? { background: SOUND_COLORS[o], color: '#0b0f1a' }
-                : undefined
-            }
+            style={active ? { borderColor: SOUND_COLORS[o] } : undefined}
           >
-            {SOUND_LABELS[o][0]}
+            <SoundSymbol sound={o} size={14} glow={false} />
           </button>
         );
       })}

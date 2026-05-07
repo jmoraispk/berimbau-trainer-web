@@ -30,6 +30,11 @@ const MIN_GAP_SEC = 0.08;
 const ABS_FLOOR = 0.01;
 const RATIO = 2.2;
 const BASELINE_TAU_SEC = 0.5;
+// Default 0 = off. When > 0, the worklet treats a threshold-crossing
+// as a "candidate" and only confirms it as a real onset if RMS stays
+// above ABS_FLOOR for this long. Rejects single-block clicks (mouse
+// taps, knocks on the wood) without rejecting real strikes.
+const MIN_SUSTAIN_SEC = 0;
 
 // Quick capture: low-latency, used by Practice for live scoring AND for
 // calibration's classifier window (so the profile measures exactly what
@@ -68,6 +73,13 @@ class OnsetProcessor extends AudioWorkletProcessor {
     this.absFloor = ABS_FLOOR;
     this.ratio = RATIO;
     this.baselineTauSec = BASELINE_TAU_SEC;
+    this.minSustainSec = MIN_SUSTAIN_SEC;
+    /**
+     * @type {{onsetTime:number, rms:number, baseline:number} | null}
+     * Holds a candidate onset while we wait for it to sustain. null
+     * when no candidate is pending (the common case once minSustainSec=0).
+     */
+    this.pendingOnset = null;
     this.recomputeAlpha();
 
     this.port.onmessage = (e) => {
@@ -81,12 +93,14 @@ class OnsetProcessor extends AudioWorkletProcessor {
           case 'absFloor':        this.absFloor = v; break;
           case 'ratio':           this.ratio = v; break;
           case 'baselineTauSec':  this.baselineTauSec = v; this.recomputeAlpha(); break;
+          case 'minSustainSec':   this.minSustainSec = v; break;
         }
       } else if (msg.type === 'reset') {
         this.minGapSec = MIN_GAP_SEC;
         this.absFloor = ABS_FLOOR;
         this.ratio = RATIO;
         this.baselineTauSec = BASELINE_TAU_SEC;
+        this.minSustainSec = MIN_SUSTAIN_SEC;
         this.recomputeAlpha();
       }
     };
@@ -134,33 +148,68 @@ class OnsetProcessor extends AudioWorkletProcessor {
     if (this.baseline === 0) this.baseline = blockRms;
     else this.baseline += this.emaAlpha * (blockRms - this.baseline);
 
+    // Sustain check: while a candidate onset is pending, watch its
+    // RMS evolve. If the block drops below the absolute floor, the
+    // sound was a click — drop the candidate. If we've sustained for
+    // ≥ minSustainSec, promote it to a real onset and ship captures
+    // backdated to the original threshold-cross moment.
+    if (this.pendingOnset) {
+      if (blockRms < this.absFloor) {
+        this.pendingOnset = null;
+      } else {
+        const elapsed = currentTime - this.pendingOnset.onsetTime;
+        if (elapsed >= this.minSustainSec) {
+          this.confirmOnset(this.pendingOnset, elapsed);
+          this.pendingOnset = null;
+        }
+      }
+      return true; // skip new-onset detection while still evaluating the candidate
+    }
+
     // Onset detection.
     if (blockRms < this.absFloor) return true;
     if (blockRms < this.baseline * this.ratio) return true;
     if (currentTime - this.lastOnsetT < this.minGapSec) return true;
     if (this.pending.length >= MAX_PENDING * 2) return true; // safety valve
 
-    this.lastOnsetT = currentTime;
+    if (this.minSustainSec > 0) {
+      // Defer the actual onset until the candidate sustains. This
+      // doesn't ship anything yet — confirmOnset() does that.
+      this.pendingOnset = { onsetTime: currentTime, rms: blockRms, baseline: this.baseline };
+    } else {
+      this.confirmOnset({ onsetTime: currentTime, rms: blockRms, baseline: this.baseline }, 0);
+    }
 
-    const onsetTime = currentTime; // moment the spike crossed the threshold
+    return true;
+  }
+
+  /**
+   * Promote a candidate onset to a real one: lock in lastOnsetT and
+   * push the quick + full pending captures. `elapsed` is how long the
+   * sustain check ran for; it pre-credits the capture's sampleCount
+   * so the eventual segment ends `samplesNeeded` after the original
+   * onsetTime, not after the confirmation. Without this offset the
+   * post-roll would be shifted by `elapsed` and cut off the attack.
+   */
+  confirmOnset(cand, elapsed) {
+    this.lastOnsetT = cand.onsetTime;
+    const elapsedSamples = Math.max(0, Math.floor(elapsed * sampleRate));
     this.pending.push({
       kind: 'quick',
-      onsetTime,
-      sampleCount: 0,
+      onsetTime: cand.onsetTime,
+      sampleCount: elapsedSamples,
       samplesNeeded: Math.ceil(QUICK_POST_SEC * sampleRate),
-      rms: blockRms,
-      baseline: this.baseline,
+      rms: cand.rms,
+      baseline: cand.baseline,
     });
     this.pending.push({
       kind: 'full',
-      onsetTime,
-      sampleCount: 0,
+      onsetTime: cand.onsetTime,
+      sampleCount: elapsedSamples,
       samplesNeeded: Math.ceil(FULL_POST_SEC * sampleRate),
-      rms: blockRms,
-      baseline: this.baseline,
+      rms: cand.rms,
+      baseline: cand.baseline,
     });
-
-    return true;
   }
 
   shipCapture(p) {
