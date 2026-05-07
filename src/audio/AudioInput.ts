@@ -347,7 +347,11 @@ export class AudioInput {
    * fired by the playback flow into audioBus exactly as if the user
    * had played the audio live.
    */
-  playClip(samples: Float32Array, sampleRate: number): Promise<void> {
+  playClip(
+    samples: Float32Array,
+    sampleRate: number,
+    onStart?: (ctxStartTime: number) => void,
+  ): Promise<void> {
     if (!this.context || !this.workletNode || !this.micSource) {
       return Promise.reject(new Error('Mic not running'));
     }
@@ -369,13 +373,19 @@ export class AudioInput {
     // through the normal mic path, which is why playback was silent.
     src.connect(worklet);
     src.connect(ctx.destination);
+    // Schedule a tiny lead time so the start time we report to the
+    // caller exactly matches when the buffer begins playing — the
+    // worklet's onset timestamps are in the same currentTime domain,
+    // so subtracting yields the strike's offset within the clip.
+    const startAt = ctx.currentTime + 0.05;
     return new Promise((resolve) => {
       src.onended = () => {
         try { src.disconnect(); } catch { /* fine */ }
         try { mic.connect(worklet); } catch { /* fine */ }
         resolve();
       };
-      src.start();
+      src.start(startAt);
+      onStart?.(startAt);
     });
   }
 

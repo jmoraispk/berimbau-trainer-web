@@ -60,6 +60,9 @@ interface LabStrike {
   sourceKind: StrikeSourceKind;
   /** Slot this strike came from (record or play); null for live mic. */
   sourceSlot: SlotId | null;
+  /** Strike offset in seconds within the clip — set only when
+   *  sourceKind === 'play'. Drives the waveform marker overlay. */
+  playOffsetSec?: number;
 }
 
 const MAX_STRIKES = 200;
@@ -202,6 +205,10 @@ export function Lab() {
   // resubscribe on every state change.
   const recordingSlotRef = useRef<SlotId | null>(null);
   const playingSlotRef = useRef<SlotId | null>(null);
+  // AudioContext currentTime when the in-flight clip's BufferSource
+  // started. Subtracting from a strike's timestamp yields its offset
+  // inside the clip — used by the waveform marker overlay.
+  const playStartCtxRef = useRef<number>(0);
   useEffect(() => {
     recordingSlotRef.current = recordingSlot;
   }, [recordingSlot]);
@@ -311,6 +318,10 @@ export function Lab() {
         const sourceSlot = playSlot ?? null;
         const autoTagged: ClassifiableSound | null =
           sourceSlot && sourceSlot !== 'song' ? sourceSlot : null;
+        const playOffsetSec =
+          playSlot && playStartCtxRef.current > 0
+            ? capture.timestamp - playStartCtxRef.current
+            : undefined;
         setStrikes((prev) =>
           [
             {
@@ -329,6 +340,7 @@ export function Lab() {
               tagged: autoTagged,
               sourceKind,
               sourceSlot,
+              playOffsetSec,
             } as LabStrike,
             ...prev,
           ].slice(0, MAX_STRIKES),
@@ -503,11 +515,14 @@ export function Lab() {
     playingSlotRef.current = slot;
     setPlayingSlot(slot);
     try {
-      await input.playClip(clip.samples, clip.sampleRate);
+      await input.playClip(clip.samples, clip.sampleRate, (startCtx) => {
+        playStartCtxRef.current = startCtx;
+      });
     } catch (err) {
       console.warn('[lab] playClip failed', err);
     } finally {
       playingSlotRef.current = null;
+      playStartCtxRef.current = 0;
       setPlayingSlot(null);
     }
   };
@@ -559,6 +574,26 @@ export function Lab() {
     [strikes],
   );
   const [hoveredAt, setHoveredAt] = useState<number | null>(null);
+
+  // Group play-strikes by the slot they came from, so each ClipSlot
+  // can render onset markers on its own waveform. Color follows the
+  // live classification — orange/yellow/etc. per the SOUND_COLORS map.
+  const onsetsBySlot = useMemo<Partial<Record<SlotId, OnsetMarker[]>>>(() => {
+    const out: Partial<Record<SlotId, OnsetMarker[]>> = {};
+    for (const s of strikes) {
+      if (s.sourceKind !== 'play' || !s.sourceSlot || s.playOffsetSec === undefined) continue;
+      const list = out[s.sourceSlot] ?? [];
+      list.push({
+        offsetSec: s.playOffsetSec,
+        color:
+          s.classified !== 'unknown'
+            ? SOUND_COLORS[s.classified]
+            : '#94a3b8',
+      });
+      out[s.sourceSlot] = list;
+    }
+    return out;
+  }, [strikes]);
 
   const taggedCounts = useMemo(() => {
     const c: Record<ClassifiableSound, number> = { dong: 0, ch: 0, ding: 0 };
@@ -681,6 +716,7 @@ export function Lab() {
           ) : (
             <RecordingsPanel
               clips={clips}
+              onsetsBySlot={onsetsBySlot}
               clipLengthSec={clipLengthSec}
               onClipLengthChange={setClipLengthSec}
               recordingSlot={recordingSlot}
@@ -739,12 +775,34 @@ export function Lab() {
  * and draws a min/max envelope per column — much cleaner than a
  * polyline for multi-second clips, and proves visually that the
  * recording is one continuous stretch.
+ *
+ * `onsets` overlays vertical tick marks at each detected strike's
+ * offset within the clip — colour matches the strike's classification
+ * so the user reads "where in this audio did the engine fire, and
+ * what did it think it was?" without scanning the strike table.
  */
-function ClipWaveform({ clip }: { clip: Clip }) {
-  const path = useMemo(() => waveformEnvelope(clip.samples, 600, 36), [clip.samples]);
+function ClipWaveform({ clip, onsets }: { clip: Clip; onsets: OnsetMarker[] }) {
+  const W = 600;
+  const H = 36;
+  const path = useMemo(() => waveformEnvelope(clip.samples, W, H), [clip.samples]);
   return (
-    <svg viewBox="0 0 600 36" className="block w-full h-9 rounded-md bg-bg/60 border border-border/40">
+    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full h-9 rounded-md bg-bg/60 border border-border/40">
       <path d={path} fill="#5a6480" />
+      {onsets.map((o, i) => {
+        const x = Math.max(0, Math.min(W, (o.offsetSec / clip.durationSec) * W));
+        return (
+          <line
+            key={i}
+            x1={x}
+            x2={x}
+            y1={1}
+            y2={H - 1}
+            stroke={o.color}
+            strokeWidth={1}
+            opacity={0.85}
+          />
+        );
+      })}
     </svg>
   );
 }
@@ -813,8 +871,14 @@ function TabBar({ value, onChange }: { value: LabTab; onChange: (t: LabTab) => v
 
 // ─── Recordings panel ────────────────────────────────────────────────
 
+interface OnsetMarker {
+  offsetSec: number;
+  color: string;
+}
+
 function RecordingsPanel({
   clips,
+  onsetsBySlot,
   clipLengthSec,
   onClipLengthChange,
   recordingSlot,
@@ -827,6 +891,7 @@ function RecordingsPanel({
   onDownloadAll,
 }: {
   clips: Partial<Record<SlotId, Clip>>;
+  onsetsBySlot: Partial<Record<SlotId, OnsetMarker[]>>;
   clipLengthSec: number;
   onClipLengthChange: (s: number) => void;
   recordingSlot: SlotId | null;
@@ -886,6 +951,7 @@ function RecordingsPanel({
             label={SLOT_LABEL[id]}
             sound={id === 'song' ? null : id}
             clip={clips[id] ?? null}
+            onsets={onsetsBySlot[id] ?? []}
             isRecording={recordingSlot === id}
             recordingStartedAt={recordingStartedAt}
             isPlaying={playingSlot === id}
@@ -911,6 +977,7 @@ function ClipSlot({
   label,
   sound,
   clip,
+  onsets,
   isRecording,
   recordingStartedAt,
   isPlaying,
@@ -926,6 +993,7 @@ function ClipSlot({
   label: string;
   sound: ClassifiableSound | null;
   clip: Clip | null;
+  onsets: OnsetMarker[];
   isRecording: boolean;
   recordingStartedAt: number;
   isPlaying: boolean;
@@ -1011,15 +1079,17 @@ function ClipSlot({
           disabled={!clip || isRecording || isPlaying}
           title="Clear clip"
           aria-label="Clear clip"
-          className="shrink-0 w-6 h-6 rounded text-text-dim/60 hover:text-red-400 hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center text-[12px] leading-none"
+          className="shrink-0 w-7 h-7 rounded text-text-dim/60 hover:text-red-400 hover:bg-bg-elev disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center"
         >
-          ×
+          <TrashIcon size={14} />
         </button>
       </div>
       {/* Continuous waveform of the recorded clip — reassures the user
        *  that what was captured is one unbroken stretch of audio, not
        *  a sequence of chunks. Hidden until a clip exists. */}
-      {clip && !isRecording && <ClipWaveform clip={clip} />}
+      {clip && !isRecording && (
+        <ClipWaveform clip={clip} onsets={onsets} />
+      )}
     </div>
   );
 }
@@ -1118,9 +1188,11 @@ function Toolbar({
         {strikeCount} captured
       </span>
       <div className="grow" />
-      <span className="text-[10px] font-mono uppercase tracking-wider text-text-dim">
-        Profile · {activeLabel}
-      </span>
+      {activeLabel !== 'none' && (
+        <span className="text-[10px] font-mono uppercase tracking-wider text-text-dim">
+          Profile · {activeLabel}
+        </span>
+      )}
       <span className="text-[10px] font-mono text-text-dim">
         tagged TCH {taggedCounts.ch} · DONG {taggedCounts.dong} · DING {taggedCounts.ding}
       </span>
@@ -1513,9 +1585,12 @@ function StrikeRow({
           onPlay(strike);
         }
       }}
-      className="grid grid-cols-[4rem_minmax(0,1fr)_5rem_1.25rem] gap-2 items-center px-2 py-1.5 border-b border-border/30 hover:bg-bg-elev/50 cursor-pointer text-xs font-mono tabular-nums focus:outline-none focus-visible:bg-bg-elev/70"
+      className="grid grid-cols-[1.25rem_3.5rem_minmax(0,1fr)_5rem_1.75rem] gap-2 items-center px-2 py-1.5 border-b border-border/30 hover:bg-bg-elev/50 cursor-pointer text-xs font-mono tabular-nums focus:outline-none focus-visible:bg-bg-elev/70 group"
       title="Click to play"
     >
+      <span className="text-accent/70 group-hover:text-accent text-sm leading-none flex items-center justify-center" aria-hidden>
+        ▷
+      </span>
       <div className="flex flex-col leading-tight">
         <span className="text-text-dim">{tSec.toFixed(1)}s</span>
         {strike.sourceKind === 'play' && strike.sourceSlot && (
@@ -1554,11 +1629,33 @@ function StrikeRow({
         }}
         title="Delete strike"
         aria-label="Delete strike"
-        className="w-5 h-5 rounded text-[11px] text-text-dim/60 hover:text-red-400 hover:bg-bg-elev transition flex items-center justify-center leading-none"
+        className="w-7 h-7 rounded text-text-dim/60 hover:text-red-400 hover:bg-bg-elev transition flex items-center justify-center"
       >
-        ×
+        <TrashIcon size={14} />
       </button>
     </div>
+  );
+}
+
+function TrashIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
   );
 }
 
