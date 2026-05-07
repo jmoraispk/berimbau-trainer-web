@@ -9,6 +9,7 @@ import {
 import { extractFeatures } from '@/engine/features';
 import { classify } from '@/engine/classifier';
 import { computeProfiles, type CalibrationSample, type SavedCalibration } from '@/engine/calibration';
+import { CalibrationScatter } from '@/components/CalibrationScatter';
 import type { ClassifiableSound } from '@/engine/profiles';
 import { SOUND_COLORS, SOUND_LABELS } from '@/engine/rhythms';
 
@@ -85,7 +86,7 @@ const PARAM_SPECS: ParamSpec[] = [
     min: 0.001, max: 0.1, step: 0.001,
     fmt: (v) => v.toFixed(3),
     help:
-      'Minimum block RMS for a sound to count as an onset. Lower = more sensitive (catches quiet strikes, but also clicks and breathing). Higher = needs a louder strike. Default 0.010.',
+      'Absolute volume floor. The block\'s raw RMS must be ≥ this number, full stop, no matter how quiet the room is. Whisper ≈ 0.001, speech ≈ 0.02, real strike ≥ 0.1. Catches breath / clicks even in a silent room, where RATIO alone would let them through.',
   },
   {
     key: 'ratio',
@@ -93,7 +94,7 @@ const PARAM_SPECS: ParamSpec[] = [
     min: 1.2, max: 5, step: 0.1,
     fmt: (v) => v.toFixed(2),
     help:
-      'How much louder than the rolling baseline a sound must be. 2.2 means "≥ 2.2× the recent noise level". Lower = more sensitive in quiet rooms. Higher = needs a sharp transient that clearly stands out.',
+      'Relative gate. The block\'s RMS must be ≥ RATIO × the rolling baseline (BASELINE_τ\'s estimate of the room\'s recent noise level). 2.2 means "at least 2.2× louder than what\'s been happening". Catches sustained noise — a TV at constant volume raises the baseline so it stops firing onsets, while a sharp strike still spikes 5–10× above. Both ABS_FLOOR and RATIO must clear.',
   },
   {
     key: 'minGapSec',
@@ -101,7 +102,7 @@ const PARAM_SPECS: ParamSpec[] = [
     min: 0.03, max: 0.5, step: 0.01,
     fmt: (v) => `${(v * 1000).toFixed(0)} ms`,
     help:
-      'Refractory period — the shortest time between two accepted onsets. 80 ms is fine for fast tch-tch in regional toques. Increase if a single strike\'s gourd resonance is firing a phantom second hit.',
+      'Refractory between accepted onsets — *not* averaging (that\'s BASELINE_τ). After one strike fires, the worklet ignores further onsets for this long. Lower = fast tch-tch passes through. Higher = a single strike\'s gourd ring stops firing a phantom second hit. Default 80 ms.',
   },
   {
     key: 'baselineTauSec',
@@ -109,12 +110,12 @@ const PARAM_SPECS: ParamSpec[] = [
     min: 0.1, max: 2, step: 0.05,
     fmt: (v) => `${v.toFixed(2)} s`,
     help:
-      'How quickly the rolling baseline (estimate of the room\'s noise floor) adapts. Smaller = adapts fast (good for changing rooms, but may track sustained sounds and miss them). Larger = stable baseline, slower to recover from loud sustained noise.',
+      'Time constant of the rolling baseline (EMA over recent block RMS). The baseline is the "noise floor estimate" RATIO compares against. Smaller τ = adapts fast (handy when noise level keeps changing), but may track a sustained strike and miss its end. Larger τ = stabler floor, slower to recover from loud sustained noise. 0.5 s is a reasonable balance.',
   },
 ];
 
 const FFT_HELP =
-  'AnalyserNode FFT window for the live spectrum panel above. Does not affect onset detection — that\'s done block-by-block in the worklet. Larger = finer frequency resolution but slower to update. 2048 ≈ 47 Hz/bin at 48 kHz.';
+  'AnalyserNode FFT window for the live spectrum panel above. Visualization only — onset detection runs block-by-block in the worklet and does not look at this. Larger = finer frequency resolution but a slower update. 2048 ≈ 47 Hz/bin at 48 kHz.';
 
 function readPersistedParams(): { params: LabParams; fftSize: number } {
   try {
@@ -184,6 +185,42 @@ export function Lab() {
     persistParams(fresh.params, fresh.fftSize);
     inputRef.current?.resetOnsetParams();
     inputRef.current?.setFftSize(DEFAULT_FFT_SIZE);
+  };
+
+  // Brief inline confirmation after an Export click.
+  const [exportFlash, setExportFlash] = useState<string | null>(null);
+  const exportTuning = async () => {
+    const payload = {
+      ...params,
+      fftSize,
+    };
+    const text = JSON.stringify(payload, null, 2);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      // Clipboard API can be blocked (insecure context, missing permission).
+      // Fall through to the textarea fallback below.
+    }
+    if (!copied) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        copied = true;
+      } catch {
+        // Give up gracefully — log so the user can grab from console.
+        console.info('[lab] export tuning (clipboard unavailable):\n' + text);
+      }
+    }
+    setExportFlash(copied ? 'Copied ✓' : 'See console');
+    window.setTimeout(() => setExportFlash(null), 2000);
   };
 
   // Subscribe to raw captures while running.
@@ -289,6 +326,31 @@ export function Lab() {
       console.warn('[lab] playback failed', err);
     }
   };
+
+  // Mapping for the (centroid, f0) scatter at the bottom of the page.
+  // Tag wins over classification — when the user has labelled a strike
+  // we treat that as ground truth for colour. Strikes the classifier
+  // marks 'unknown' AND that aren't tagged are dropped from the plot.
+  const scatterSamples = useMemo<CalibrationSample[]>(
+    () =>
+      strikes
+        .filter((s): s is LabStrike & { classified: ClassifiableSound } => {
+          if (s.tagged) return true;
+          return s.classified !== 'unknown';
+        })
+        .map((s) => ({
+          sound: (s.tagged ?? s.classified) as ClassifiableSound,
+          f0: s.f0,
+          centroid: s.centroid,
+          rms: s.rms,
+          at: s.timestamp,
+          segment: s.segment,
+          sampleRate: s.sampleRate,
+          preSec: s.preSec,
+        })),
+    [strikes],
+  );
+  const [hoveredAt, setHoveredAt] = useState<number | null>(null);
 
   const taggedCounts = useMemo(() => {
     const c: Record<ClassifiableSound, number> = { dong: 0, ch: 0, ding: 0 };
@@ -400,12 +462,16 @@ export function Lab() {
             strike={strikes[0] ?? null}
             onPlay={onPlay}
           />
-          <ParametersPanel
+          <DetectionPanel
             params={params}
-            fftSize={fftSize}
             onParam={setParam}
-            onFftSize={setFftSize}
             onReset={resetParams}
+            onExport={() => void exportTuning()}
+            exportFlash={exportFlash}
+          />
+          <VisualizationPanel
+            fftSize={fftSize}
+            onFftSize={setFftSize}
           />
         </div>
         <StrikeTable
@@ -415,7 +481,56 @@ export function Lab() {
           sessionStart={sessionStart}
         />
       </div>
+
+      <ScatterPanel
+        samples={scatterSamples}
+        hoveredAt={hoveredAt}
+        onHoverChange={setHoveredAt}
+        onPlay={(sample) => {
+          // Bridge from a CalibrationSample-shaped click back to the
+          // LabStrike playback path. Match by timestamp (== at).
+          const strike = strikes.find((s) => s.timestamp === sample.at);
+          if (strike) onPlay(strike);
+        }}
+      />
     </main>
+  );
+}
+
+function ScatterPanel({
+  samples,
+  hoveredAt,
+  onHoverChange,
+  onPlay,
+}: {
+  samples: CalibrationSample[];
+  hoveredAt: number | null;
+  onHoverChange: (at: number | null) => void;
+  onPlay: (s: CalibrationSample) => void;
+}) {
+  return (
+    <div className="card flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+          Scatter — centroid × f₀
+        </span>
+        <span className="text-[10px] font-mono text-text-dim">
+          {samples.length} plotted · tag wins over classification · click to play
+        </span>
+      </div>
+      {samples.length === 0 ? (
+        <p className="text-xs text-text-dim text-center py-8">
+          Capture some strikes (or tag them) and they'll plot here, color-coded by sound.
+        </p>
+      ) : (
+        <CalibrationScatter
+          samples={samples}
+          onPlay={onPlay}
+          hoveredAt={hoveredAt}
+          onHoverChange={onHoverChange}
+        />
+      )}
+    </div>
   );
 }
 
@@ -781,35 +896,45 @@ function SelectedStrikePanel({
 
 // ─── Parameters panel ────────────────────────────────────────────────
 
-function ParametersPanel({
+function DetectionPanel({
   params,
-  fftSize,
   onParam,
-  onFftSize,
   onReset,
+  onExport,
+  exportFlash,
 }: {
   params: LabParams;
-  fftSize: number;
   onParam: (key: OnsetParamKey, value: number) => void;
-  onFftSize: (size: number) => void;
   onReset: () => void;
+  onExport: () => void;
+  exportFlash: string | null;
 }) {
   const [openHelp, setOpenHelp] = useState<string | null>(null);
   const toggleHelp = (id: string) => setOpenHelp((prev) => (prev === id ? null : id));
   return (
     <div className="card flex flex-col gap-3 px-4 py-3">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
-          Detection parameters
+          Detection
         </span>
-        <button
-          type="button"
-          onClick={onReset}
-          className="btn-ghost px-2 py-0.5 text-[10px]"
-          title="Restore worklet defaults and clear the saved tuning"
-        >
-          Reset to defaults
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onExport}
+            className="btn-ghost px-2 py-0.5 text-[10px]"
+            title="Copy current tuning as JSON — paste into the worklet to make these the new defaults"
+          >
+            {exportFlash ?? 'Export tuning'}
+          </button>
+          <button
+            type="button"
+            onClick={onReset}
+            className="btn-ghost px-2 py-0.5 text-[10px]"
+            title="Restore worklet defaults and clear the saved tuning"
+          >
+            Reset
+          </button>
+        </div>
       </div>
 
       {PARAM_SPECS.map((spec) => (
@@ -823,42 +948,56 @@ function ParametersPanel({
         />
       ))}
 
-      <div className="flex flex-col gap-1 pt-1">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-text-dim w-24 shrink-0">
-            FFT_SIZE
-          </span>
-          <InfoButton
-            open={openHelp === 'fft'}
-            onClick={() => toggleHelp('fft')}
-            label="What FFT_SIZE does"
-          />
-          <div className="flex gap-1 flex-wrap">
-            {FFT_SIZE_OPTIONS.map((opt) => {
-              const active = fftSize === opt;
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => onFftSize(opt)}
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition ${
-                    active
-                      ? 'bg-accent text-bg'
-                      : 'text-text-dim hover:text-text border border-border hover:border-border-strong'
-                  }`}
-                >
-                  {opt}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        {openHelp === 'fft' && <HelpRow text={FFT_HELP} />}
-      </div>
-
       <p className="text-[10px] text-text-dim leading-relaxed pt-1">
-        Tuning is persisted to localStorage; pushed into the worklet at every Start. Reset clears both.
+        Tuning persists to localStorage, pushed into the worklet at every Start. Reset clears both.
       </p>
+    </div>
+  );
+}
+
+function VisualizationPanel({
+  fftSize,
+  onFftSize,
+}: {
+  fftSize: number;
+  onFftSize: (size: number) => void;
+}) {
+  const [helpOpen, setHelpOpen] = useState(false);
+  return (
+    <div className="card flex flex-col gap-2 px-4 py-3">
+      <span className="text-[10px] font-semibold text-text-dim tracking-[0.18em] uppercase">
+        Visualization
+      </span>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-mono text-text-dim w-24 shrink-0">
+          FFT_SIZE
+        </span>
+        <InfoButton
+          open={helpOpen}
+          onClick={() => setHelpOpen((v) => !v)}
+          label="What FFT_SIZE does"
+        />
+        <div className="flex gap-1 flex-wrap">
+          {FFT_SIZE_OPTIONS.map((opt) => {
+            const active = fftSize === opt;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => onFftSize(opt)}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition ${
+                  active
+                    ? 'bg-accent text-bg'
+                    : 'text-text-dim hover:text-text border border-border hover:border-border-strong'
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {helpOpen && <HelpRow text={FFT_HELP} />}
     </div>
   );
 }
