@@ -456,7 +456,10 @@ export function Practice() {
 
   // Keyboard shortcuts:
   //   space        — toggle pause (running ↔ paused)
-  //   1 / 2 / 3    — inject DONG / TCH / DING (scored like a real hit)
+  //   1 / 2 / 3    — inject TCH / DONG / DING (scored like a real hit)
+  // Order matches the calibration stages (TCH → DONG → DING), so the
+  // first key the user reaches for is the same sound the calibration
+  // flow trained them on first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -474,10 +477,10 @@ export function Practice() {
       if (!input) return;
       if (e.code === 'Digit1' || e.key === '1') {
         e.preventDefault();
-        input.inject('dong');
+        input.inject('ch');
       } else if (e.code === 'Digit2' || e.key === '2') {
         e.preventDefault();
-        input.inject('ch');
+        input.inject('dong');
       } else if (e.code === 'Digit3' || e.key === '3') {
         e.preventDefault();
         input.inject('ding');
@@ -890,8 +893,8 @@ function KeyboardPad({
 }) {
   return (
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-stretch gap-2">
-      <PadButton label="1" color={SOUND_COLORS.dong} name="DONG" onPress={onDong} />
-      <PadButton label="2" color={SOUND_COLORS.ch} name="TCH" onPress={onCh} />
+      <PadButton label="1" color={SOUND_COLORS.ch} name="TCH" onPress={onCh} />
+      <PadButton label="2" color={SOUND_COLORS.dong} name="DONG" onPress={onDong} />
       <PadButton label="3" color={SOUND_COLORS.ding} name="DING" onPress={onDing} />
     </div>
   );
