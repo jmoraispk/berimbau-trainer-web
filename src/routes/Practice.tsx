@@ -22,6 +22,7 @@ import {
 } from '@/engine/scoring';
 import { saveSession } from '@/storage/sessions-store';
 import { pushSession } from '@/cloud/sync';
+import { classifyMicLevel, type MicLevelState } from '@/audio/mic-feedback';
 import { useI18n, type TFn } from '@/i18n';
 
 /**
@@ -126,6 +127,11 @@ export function Practice() {
 
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Which input the live session is using. 'mic' = acoustic capture;
+  // 'keyboard' = mic unavailable, only 1/2/3 + the on-screen pad score.
+  // Null until a session starts. Drives the on-canvas mic indicator so a
+  // silently-failed mic doesn't read as "the app scores everything a miss".
+  const [inputMode, setInputMode] = useState<'mic' | 'keyboard' | null>(null);
   // BPM is adjustable mid-practice. Display value in state; the render
   // loop reads the ref so a BPM bump doesn't re-render until the HUD flash.
   const [bpm, setBpm] = useState(initialBpm);
@@ -524,6 +530,7 @@ export function Practice() {
 
   const beginSession = (input: AudioInput) => {
     inputRef.current = input;
+    setInputMode(input.hasMicInput ? 'mic' : 'keyboard');
     const now = input.now();
     scoringRef.current.reset();
     registeredBeatsRef.current = new Set();
@@ -564,6 +571,21 @@ export function Practice() {
     });
   }, []);
 
+  // Force the on-screen pad visible (vs toggleKeyboard) — used by the mic
+  // indicator when it offers tapping the keys as a fallback.
+  const enableKeyboard = useCallback(() => {
+    setKeyboardOn(true);
+    try {
+      localStorage.setItem(KEYBOARD_PAD_PREF_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Stable so the mic indicator's polling effect isn't torn down on every
+  // incidental Practice re-render (BPM flash, toggles, …).
+  const getMicLevel = useCallback(() => inputRef.current?.getLevel() ?? 0, []);
+
   const togglePlayAlong = useCallback(() => {
     setPlayAlongOn((prev) => {
       const next = !prev;
@@ -590,13 +612,14 @@ export function Practice() {
     });
   }, []);
 
-  // Single entry point. Tries mic first; if the browser refuses
-  // (insecure origin, denied permission, no input device), falls back
-  // to keyboard-only mode so the session still starts. Either way the
-  // physical 1/2/3 keys and the on-screen keyboard pad work — the
-  // pad's visibility is a separate toggle.
-  const handleStart = async () => {
-    if (status === 'starting' || status === 'running') return;
+  // Acquire an AudioInput — mic first, keyboard-only fallback — and begin a
+  // fresh session. Shared by the initial auto-start, the error-overlay
+  // retry, and the "use microphone" action on the mic-status indicator.
+  // Tries mic first; if the browser refuses (insecure origin, denied
+  // permission, no input device), falls back to keyboard-only mode so the
+  // session still starts. Either way the physical 1/2/3 keys and the
+  // on-screen pad work — the pad's visibility is a separate toggle.
+  const launchInput = async () => {
     setStatus('starting');
     setErrorMsg(null);
     const input = new AudioInput();
@@ -615,6 +638,24 @@ export function Practice() {
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setStatus('error');
     }
+  };
+
+  const handleStart = async () => {
+    if (status === 'starting' || status === 'running') return;
+    await launchInput();
+  };
+
+  // Tear down the current input (usually the keyboard-only fallback) and
+  // try the mic again — e.g. after the user grants permission or fixes
+  // their OS input. Persists any beats already played so swapping inputs
+  // doesn't silently drop a partial run.
+  const retryMic = async () => {
+    if (status === 'starting') return;
+    persistSession();
+    await inputRef.current?.stop();
+    inputRef.current = null;
+    schedulerRef.current = null;
+    await launchInput();
   };
 
   // Auto-start when the route mounts so the user lands directly in the
@@ -667,6 +708,19 @@ export function Practice() {
           <span className="text-xs text-text-dim font-mono">· {bpm} bpm</span>
         )}
       </div>
+
+      {status === 'running' && inputMode && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2">
+          <MicStatus
+            mode={inputMode}
+            getLevel={getMicLevel}
+            onRetryMic={retryMic}
+            onShowKeys={enableKeyboard}
+            keyboardVisible={keyboardOn}
+            t={t}
+          />
+        </div>
+      )}
 
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <button
@@ -935,6 +989,191 @@ function PadButton({
       </span>
       <span>{name}</span>
     </button>
+  );
+}
+
+/**
+ * Live mic indicator shown top-centre during a running session.
+ *
+ *   - mic mode, 'listening' / 'hearing' → compact glyph + level bar. The
+ *     bar moving (and going green on a strike) is the honest signal that
+ *     the app is actually hearing the berimbau.
+ *   - mic mode, 'silent' → after a few seconds with no signal at all, an
+ *     amber "can't hear you" pill that expands to troubleshooting plus a
+ *     "use microphone" / on-screen-keys escape hatch.
+ *   - keyboard mode → an accent pill making the silent mic fallback
+ *     explicit, with the same two actions.
+ *
+ * Polls AudioInput.getLevel() on its own ~12 Hz rAF so it never re-renders
+ * the canvas loop. The pure threshold logic lives in mic-feedback.ts.
+ */
+function MicStatus({
+  mode,
+  getLevel,
+  onRetryMic,
+  onShowKeys,
+  keyboardVisible,
+  t,
+}: {
+  mode: 'mic' | 'keyboard';
+  getLevel: () => number;
+  onRetryMic: () => void;
+  onShowKeys: () => void;
+  keyboardVisible: boolean;
+  t: TFn;
+}) {
+  const [level, setLevel] = useState(0);
+  const [micState, setMicState] = useState<MicLevelState>('listening');
+  const [open, setOpen] = useState(false);
+  const peakRef = useRef(0);
+  const startRef = useRef(performance.now());
+
+  useEffect(() => {
+    if (mode !== 'mic') return;
+    let raf = 0;
+    let last = 0;
+    const tick = (nowMs: number) => {
+      if (nowMs - last >= 80) {
+        const lvl = getLevel();
+        peakRef.current = Math.max(peakRef.current, lvl);
+        setLevel(lvl);
+        setMicState(
+          classifyMicLevel({
+            level: lvl,
+            peakLevel: peakRef.current,
+            elapsedSec: (nowMs - startRef.current) / 1000,
+          }),
+        );
+        last = nowMs;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mode, getLevel]);
+
+  const actions = (
+    <>
+      <button type="button" onClick={onRetryMic} className="btn-primary px-4 py-1.5 text-xs">
+        {t('practice.mic_enable')}
+      </button>
+      {!keyboardVisible && (
+        <button
+          type="button"
+          onClick={() => {
+            onShowKeys();
+            setOpen(false);
+          }}
+          className="btn-ghost px-4 py-1.5 text-xs"
+        >
+          {t('practice.mic_show_keys')}
+        </button>
+      )}
+    </>
+  );
+
+  if (mode === 'keyboard') {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-bg-elev/85 backdrop-blur border border-accent/50 text-accent text-[11px] font-medium tracking-wide"
+        >
+          <MicGlyph muted className="w-3.5 h-3.5" />
+          {t('practice.mic_keyboard_title')}
+        </button>
+        {open && (
+          <MicCard title={t('practice.mic_keyboard_title')} body={t('practice.mic_keyboard_body')}>
+            {actions}
+          </MicCard>
+        )}
+      </div>
+    );
+  }
+
+  const silent = micState === 'silent';
+  const hearing = micState === 'hearing';
+  const fill = Math.min(1, level * 4);
+
+  if (silent) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-bg-elev/85 backdrop-blur border border-[#e2506c]/60 text-[#e2506c] text-[11px] font-medium tracking-wide"
+        >
+          <MicGlyph muted className="w-3.5 h-3.5" />
+          {t('practice.mic_silent_title')}
+        </button>
+        {open && (
+          <MicCard title={t('practice.mic_silent_title')} body={t('practice.mic_silent_body')}>
+            {actions}
+          </MicCard>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-2 px-3 h-8 rounded-full bg-bg-elev/85 backdrop-blur border ${
+        hearing ? 'border-ding/50' : 'border-border'
+      }`}
+      title={t('practice.mic_label')}
+      aria-label={t('practice.mic_label')}
+    >
+      <MicGlyph muted={false} className={`w-3.5 h-3.5 ${hearing ? 'text-ding' : 'text-text-dim'}`} />
+      <span className="w-14 h-1.5 rounded-full bg-bg overflow-hidden">
+        <span
+          className="block h-full rounded-full transition-[width] duration-100"
+          style={{ width: `${fill * 100}%`, background: hearing ? '#64f08c' : '#5a6480' }}
+        />
+      </span>
+    </span>
+  );
+}
+
+/** Dropdown explaining a mic problem, with action buttons below the copy. */
+function MicCard({
+  title,
+  body,
+  children,
+}: {
+  title: string;
+  body: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="card flex flex-col gap-2 px-4 py-3 w-64 text-center">
+      <span className="text-sm font-semibold text-text">{title}</span>
+      <p className="text-xs text-text-dim leading-relaxed">{body}</p>
+      <div className="flex flex-wrap justify-center gap-2 pt-1">{children}</div>
+    </div>
+  );
+}
+
+/** Microphone glyph; `muted` adds a diagonal slash for the off state. */
+function MicGlyph({ muted, className }: { muted: boolean; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <line x1="12" y1="18" x2="12" y2="21" />
+      {muted && <line x1="3" y1="3" x2="21" y2="21" />}
+    </svg>
   );
 }
 

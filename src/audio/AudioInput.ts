@@ -87,6 +87,16 @@ export class AudioInput {
     return this.context?.state === 'running';
   }
 
+  /**
+   * True when a live mic capture pipeline is attached. Keyboard-only mode
+   * (startKeyboardMode) runs the AudioContext for its clock but never
+   * creates the worklet, so this stays false. Practice reads it to tell
+   * the user whether their acoustic playing is actually being heard.
+   */
+  get hasMicInput(): boolean {
+    return this.workletNode !== null;
+  }
+
   /** Shared AudioContext — exposed so siblings (e.g. Metronome) can piggy-back
    *  on the same clock and audio graph. Callers must not close it. */
   get audioContext(): AudioContext | null {
