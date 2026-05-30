@@ -285,6 +285,15 @@ export const pt: Messages = {
   'practice.outcome.late_wrong': 'atrasou · errado',
   'practice.outcome.miss': 'errou',
   'practice.outcome.mistake': 'engano',
+  'practice.mic_label': 'Microfone',
+  'practice.mic_silent_title': 'Não te ouço',
+  'practice.mic_silent_body':
+    'Ainda não há sinal do microfone. Confira se a entrada certa está selecionada, se o navegador tem permissão para o microfone e se a entrada não está muda ou com volume muito baixo.',
+  'practice.mic_keyboard_title': 'Modo teclado',
+  'practice.mic_keyboard_body':
+    'O microfone não está ativo, então tocar seu berimbau não será registrado. Ative o microfone ou toque nas teclas na tela para pontuar com 1 / 2 / 3.',
+  'practice.mic_enable': 'Usar microfone',
+  'practice.mic_show_keys': 'Mostrar teclas na tela',
 
   // ── calibration ─────────────────────────────────────────────────────
   'calibrate.title': 'Calibre seu berimbau',

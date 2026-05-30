@@ -284,6 +284,15 @@ export const en = {
   'practice.outcome.late_wrong': 'late · wrong',
   'practice.outcome.miss': 'miss',
   'practice.outcome.mistake': 'mistake',
+  'practice.mic_label': 'Microphone',
+  'practice.mic_silent_title': "Can't hear you",
+  'practice.mic_silent_body':
+    "No microphone signal yet. Check that the right input is selected, the browser has mic permission, and the input isn't muted or turned all the way down.",
+  'practice.mic_keyboard_title': 'Keyboard mode',
+  'practice.mic_keyboard_body':
+    "The mic isn't active, so playing your berimbau won't register. Turn on the microphone, or tap the on-screen keys to score with 1 / 2 / 3.",
+  'practice.mic_enable': 'Use microphone',
+  'practice.mic_show_keys': 'Show on-screen keys',
 
   // ── calibration ─────────────────────────────────────────────────────
   'calibrate.title': 'Calibrate your berimbau',
